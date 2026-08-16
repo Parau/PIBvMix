@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import { normalizeTarget } from '../src/vmix/client.js'
 import { buildOnAirSet } from '../src/vmix/safety.js'
 import { parseCsv, labelForRow } from '../src/config/csv.js'
-import { createMockModel, MockVmixClient } from '../src/vmix/mock.js'
-import { verifyResourceFields } from '../src/vmix/resolver.js'
+import { createMockModel, modelToXml, MockVmixClient } from '../src/vmix/mock.js'
+import { resolveTitleResource, verifyResourceFields } from '../src/vmix/resolver.js'
 
 test('normalizes vMix addresses',()=>{
   assert.equal(normalizeTarget('192.168.1.50'),'http://192.168.1.50:8088')
@@ -17,11 +17,28 @@ test('CSV parser handles quotes, commas, BOM and multiline',()=>{
   assert.equal(labelForRow(['John Smith','CEO'],0),'John Smith — CEO')
 })
 
-test('ON AIR graph includes program/overlay descendants and handles cycles',()=>{
-  const state={mainMix:{programKey:'a'},overlays:[{inputKey:'x'}],inputs:[
-    {key:'a',layers:[{key:'b'}]},{key:'b',layers:[{key:'c'}]},{key:'c',layers:[{key:'a'}]},{key:'x',layers:[{key:'y'}]},{key:'z',layers:[]},{key:'y',layers:[]}
+test('ON AIR graph includes program/active-overlay descendants, ignores preview-only overlays and handles cycles',()=>{
+  const state={mainMix:{programKey:'a'},overlays:[{inputKey:'x',preview:false},{inputKey:'p',preview:true}],inputs:[
+    {key:'a',layers:[{key:'b'}]},{key:'b',layers:[{key:'c'}]},{key:'c',layers:[{key:'a'}]},
+    {key:'x',layers:[{key:'y'}]},{key:'y',layers:[]},{key:'p',layers:[{key:'q'}]},{key:'q',layers:[]},{key:'z',layers:[]}
   ]}
   assert.deepEqual([...buildOnAirSet(state)].sort(),['a','b','c','x','y'])
+})
+
+test('mock XML represents active and preview-only overlays like vMix',()=>{
+  const model=createMockModel()
+  const xml=modelToXml(model)
+  assert.match(xml,/<overlay number="1">7<\/overlay>/)
+  assert.match(xml,/<overlay number="2" preview="True">5<\/overlay>/)
+  const numberToKey=Object.fromEntries(model.inputs.map((x)=>[x.number,x.key]))
+  const state={
+    mainMix:{programKey:numberToKey[model.active]},
+    inputs:model.inputs,
+    overlays:model.overlays.map((x)=>({inputKey:numberToKey[x.inputNumber],preview:x.preview})),
+  }
+  const onAir=buildOnAirSet(state)
+  assert.equal(onAir.has('lower-news'),true)
+  assert.equal(onAir.has('lower-people'),false)
 })
 
 test('mock vMix commands update title and preview',async()=>{
@@ -39,6 +56,15 @@ test('field verification detects a stale preset',()=>{
   const stale={csvRow:['John Smith','CEO'],verification:{fieldNames:['Name.Text','Role.Text']}}
   assert.equal(verifyResourceFields(input,ok),true)
   assert.equal(verifyResourceFields(input,stale),false)
+})
+
+test('title resolver reports ambiguity instead of guessing between identical presets',()=>{
+  const input={key:'lower',text:[{name:'Name.Text',value:'Same Name'},{name:'Instagram.Text',value:'@same'}]}
+  const resources=[
+    {id:'a',type:'titlePreset',inputKey:'lower',csvRow:['Same Name','@same'],verification:{fieldNames:['Name.Text','Instagram.Text']}},
+    {id:'b',type:'titlePreset',inputKey:'lower',csvRow:['Same Name','@same'],verification:{fieldNames:['Name.Text','Instagram.Text']}},
+  ]
+  assert.equal(resolveTitleResource(input,resources).status,'ambiguous')
 })
 
 test('mock fixture has representative inputs',()=>{ const m=createMockModel(); assert.ok(m.inputs.some((x)=>x.type==='GT')); assert.ok(m.inputs.some((x)=>x.layers.length)); assert.ok(m.overlays.length) })
