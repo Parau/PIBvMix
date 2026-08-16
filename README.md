@@ -2,6 +2,9 @@
 
 Fast, browser-based vMix Preview resource picker.
 
+**Event-ready audited build: v0.2.0 (2026-08-16)**  
+Published app: <https://criatividade.digital/PIBvMix/>
+
 PIBvMix is a static HTML/CSS/JavaScript application designed around one live-production task: **find the next resource fast and send it to vMix Preview with one click**.
 
 ## Current implementation
@@ -11,14 +14,17 @@ PIBvMix is a static HTML/CSS/JavaScript application designed around one live-pro
 - Built-in Demo/Mock mode (`?demo=1` or button in CONFIGURE)
 - Program / Preview / ON AIR state shown directly on resource cards
 - Recursive ON AIR protection for Title/Lower inputs nested in live compositions
+- Correct distinction between active overlays and preview-only overlays
 - vMix Title Preset CSV import and one resource per preset
 - Post-preset field verification when mapping is available
+- Ambiguity-safe Title preset resolution (never guesses between identical presets)
 - Per-Title command locking
 - Search/filter and ordered resource palette
 - localStorage persistence
 - JSON configuration import/export
 - Standalone local vMix HTTP emulator
 - Automated core + emulator tests
+- Chromium/Playwright navigation and polling stress tests
 - Static GitHub Pages-ready deployment
 
 Read [`SPEC.md`](./SPEC.md) and [`DEVELOPMENT_PLAN.md`](./DEVELOPMENT_PLAN.md) for the complete design and validation plan.
