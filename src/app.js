@@ -87,14 +87,27 @@ function seedDemoResources() {
   // Demo uses a temporary palette and never overwrites the operator's persisted configuration.
   const by = current.vmixState.inputByKey
   const lower = by['lower-people']
-  const resources = [
-    ['John Smith — CEO',0,['John Smith','CEO']],['Maria Silva — CFO',1,['Maria Silva','CFO']],['David Lee — CTO',2,['David Lee','CTO']],['Ana Costa — Host',3,['Ana Costa','Host']],
-  ].map(([label,presetIndex,csvRow]) => ({ id: crypto.randomUUID(), type:'titlePreset', label, inputKey:'lower-people', presetIndex, csvRow, verification:{mode:'verifiedFields',fieldNames:['Name.Text','Role.Text']} }))
+  const peopleCatalog = [
+    ['John Smith — CEO',0,['John Smith','CEO']],
+    ['Maria Silva — CFO',1,['Maria Silva','CFO']],
+    ['David Lee — CTO',2,['David Lee','CTO']],
+    ['Ana Costa — Host',3,['Ana Costa','Host']],
+  ].map(([label,presetIndex,csvRow]) => ({ label, presetIndex, csvRow, verification:{mode:'verifiedFields',fieldNames:['Name.Text','Role.Text']}, selected:true, resourceId:crypto.randomUUID() }))
+  const resources = peopleCatalog.map((p) => ({ id:p.resourceId, type:'titlePreset', label:p.label, inputKey:'lower-people', presetIndex:p.presetIndex, csvRow:p.csvRow, verification:p.verification }))
   for (const key of ['video-1','image-1','cam-1','cam-2','cam-wide','video-2','image-2']) {
     const input=by[key]; resources.push({id:crypto.randomUUID(),type:'input',label:input.shortTitle||input.title,inputKey:key})
   }
   resources.splice(4,0,{id:crypto.randomUUID(),type:'titlePreset',label:'Breaking News',inputKey:'lower-news',presetIndex:0,csvRow:['Breaking News'],verification:{mode:'verifiedFields',fieldNames:['Headline.Text']}})
-  commitConfig((cfg) => { cfg.resources=resources; cfg.titleSources=[{inputKey:'lower-people',inputLabelAtImport:lower.shortTitle,csv:{fileName:'demo-speakers.csv',rowCount:4,importedAt:new Date().toISOString(),sha256:'demo'},verificationMode:'verifiedFields'}] })
+  commitConfig((cfg) => {
+    cfg.resources=resources
+    cfg.titleSources=[{
+      inputKey:'lower-people',
+      inputLabelAtImport:lower.shortTitle,
+      csv:{fileName:'demo-speakers.csv',rowCount:4,importedAt:new Date().toISOString(),sha256:'demo'},
+      verificationMode:'verifiedFields',
+      presets:peopleCatalog,
+    }]
+  })
 }
 
 async function refresh() {
@@ -146,7 +159,27 @@ const actions = {
   renameResource(id,label){ commitConfig((cfg)=>{const r=cfg.resources.find((x)=>x.id===id);if(r)r.label=label.trim()||r.label}) },
   moveResource(id,delta){ commitConfig((cfg)=>{const i=cfg.resources.findIndex((r)=>r.id===id);const j=Math.max(0,Math.min(cfg.resources.length-1,i+delta));if(i>=0&&i!==j){const [r]=cfg.resources.splice(i,1);cfg.resources.splice(j,0,r)}}) },
   reorderByIds(ids){ commitConfig((cfg)=>{const map=new Map(cfg.resources.map((r)=>[r.id,r]));const next=ids.map((x)=>map.get(x)).filter(Boolean);for(const r of cfg.resources)if(!ids.includes(r.id))next.push(r);cfg.resources=next}) },
-  replaceTitleResources(inputKey,newResources,metadata){ commitConfig((cfg)=>{cfg.resources=cfg.resources.filter((r)=>!(r.type==='titlePreset'&&r.inputKey===inputKey));cfg.resources.push(...newResources);cfg.titleSources=cfg.titleSources.filter((x)=>x.inputKey!==inputKey);cfg.titleSources.push({inputKey,inputLabelAtImport:store.getState().vmixState.inputByKey[inputKey]?.shortTitle||inputKey,csv:metadata,verificationMode:newResources.every((r)=>r.verification.mode==='verifiedFields')?'verifiedFields':'indexOnly'})});toast(`${newResources.length} Title presets added.`, 'success') },
+  replaceTitleResources(inputKey,newResources,metadata,catalog=[]){
+    commitConfig((cfg)=>{
+      cfg.resources=cfg.resources.filter((r)=>!(r.type==='titlePreset'&&r.inputKey===inputKey))
+      cfg.resources.push(...newResources)
+      cfg.titleSources=cfg.titleSources.filter((x)=>x.inputKey!==inputKey)
+      cfg.titleSources.push({
+        inputKey,
+        inputLabelAtImport:store.getState().vmixState.inputByKey[inputKey]?.shortTitle||inputKey,
+        csv:metadata,
+        verificationMode:newResources.length && newResources.every((r)=>r.verification.mode==='verifiedFields')?'verifiedFields':'indexOnly',
+        presets:catalog.map((p)=>({
+          presetIndex:p.presetIndex,
+          csvRow:p.csvRow || [],
+          label:p.label,
+          verification:p.verification || {mode:'indexOnly',fieldNames:[]},
+          resourceId:p.resourceId || null,
+        })),
+      })
+    })
+    toast(`${newResources.length} Title presets selected.`, 'success')
+  },
   exportConfig(){ downloadConfig(store.getState().config) },
   async importConfig(file){ try{const cfg=await readConfigFile(file);update((s)=>{s.config=cfg;persist(cfg);return s});toast('Configuration imported.','success')}catch(err){toast(err.message,'error',4500)} },
   sendResource,
