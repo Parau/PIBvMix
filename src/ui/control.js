@@ -22,7 +22,7 @@ export function renderControl(root, ctx) {
   root.innerHTML = `<header class="topbar control-topbar">
     <div class="brand"><span class="brand-mark">◆</span><strong>PIBvMix</strong></div>
     <div class="connection-chip ${e(state.connection.status)}"><span class="dot"></span>${e(state.connection.status === 'connected' ? (state.ui.demo ? 'Demo connected' : 'Connected') : state.connection.status)}</div>
-    <div class="topbar-spacer"></div><button class="btn ghost" data-action="configure">${icon('settings')} Configure</button>
+    <div class="topbar-spacer"></div><button class="btn primary" data-action="configure" title="Return to resource setup. Your current palette is preserved.">← Edit resources</button>
   </header>
   <main class="control-main">
     <section class="control-tools"><div class="search-row control-search"><span>${icon('search')}</span><input id="control-search" value="${e(state.ui.query)}" placeholder="Find a resource fast…"></div><div class="segmented compact">${['all','titles','video','image'].map((f)=>`<button data-filter="${f}" class="${filter===f?'active':''}">${f[0].toUpperCase()+f.slice(1)}</button>`).join('')}</div></section>
