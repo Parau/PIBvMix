@@ -1,0 +1,19 @@
+<!doctype html><meta charset="utf-8"><title>PIBvMix browser parser test</title><pre id="result">RUNNING</pre>
+<script type="module">
+import { parseVmixXml } from '../src/vmix/parser.js'
+import { buildOnAirSet } from '../src/vmix/safety.js'
+const xml=`<vmix><version>29.0</version><edition>Pro</edition><preset>Test</preset><inputs>
+<input key="cam" number="1" type="Capture" title="Camera" shortTitle="Camera" state="Running"/>
+<input key="lower" number="2" type="GT" title="Lower.gtzip" shortTitle="Lower" state="Running"><text index="0" name="Name.Text">John</text></input>
+<input key="mix" number="3" type="Mix" title="Mix" shortTitle="Mix" state="Running"><overlay index="0" key="lower"/></input>
+</inputs><overlays><overlay number="1">3</overlay></overlays><preview>2</preview><active>1</active></vmix>`
+try{
+ const s=parseVmixXml(xml)
+ const onAir=buildOnAirSet(s)
+ if(s.mainMix.programKey!=='cam') throw new Error('program map')
+ if(s.mainMix.previewKey!=='lower') throw new Error('preview map')
+ if(!onAir.has('lower')||!onAir.has('mix')) throw new Error('nested overlay graph')
+ if(s.inputByKey.lower.text[0].value!=='John') throw new Error('title parsing')
+ document.querySelector('#result').textContent='PASS browser XML parser + safety graph'
+}catch(e){document.querySelector('#result').textContent='FAIL '+e.stack}
+</script>
