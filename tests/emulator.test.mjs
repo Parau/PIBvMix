@@ -20,6 +20,6 @@ test('HTTP emulator exposes vMix-like state and commands',async()=>{
   let r=await fetch('http://127.0.0.1:18088/api/?Function=PreviewInput&Input=video-1&Mix=0'); assert.equal(r.status,200)
   xml=await (await fetch('http://127.0.0.1:18088/api')).text(); assert.match(xml,/<preview>3<\/preview>/)
   r=await fetch('http://127.0.0.1:18088/api/?Function=SelectTitlePreset&Input=lower-people&Value=2'); assert.equal(r.status,200)
-  xml=await (await fetch('http://127.0.0.1:18088/api')).text(); assert.match(xml,/David Lee/); assert.match(xml,/CTO/)
+  xml=await (await fetch('http://127.0.0.1:18088/api')).text(); assert.match(xml,/David Lee/); assert.match(xml,/@davidlee/)
   r=await fetch('http://127.0.0.1:18088/api/?Function=PreviewInput&Input=missing-guid'); assert.equal(r.status,500)
 })
