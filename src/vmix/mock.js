@@ -10,8 +10,8 @@ export function createMockModel() {
       { key: 'video-1', number: 3, type: 'Video', title: 'Opening Video', shortTitle: 'Opening Video', layers: [], text: [] },
       { key: 'image-1', number: 4, type: 'Image', title: 'Company Logo', shortTitle: 'Company Logo', layers: [], text: [] },
       { key: 'lower-people', number: 5, type: 'GT', title: 'Lower Thirds.gtzip', shortTitle: 'Lower Thirds', layers: [], text: [
-        { index: 0, name: 'Name.Text', value: 'John Smith' }, { index: 1, name: 'Role.Text', value: 'CEO' },
-      ], presets: [['John Smith', 'CEO'], ['Maria Silva', 'CFO'], ['David Lee', 'CTO'], ['Ana Costa', 'Host']] },
+        { index: 0, name: 'Name.Text', value: 'John Smith' }, { index: 1, name: 'Instagram.Text', value: '@johnsmith' },
+      ], presets: [['John Smith', '@johnsmith'], ['Maria Silva', '@mariasilva'], ['David Lee', '@davidlee'], ['Ana Costa', '@anacosta']] },
       { key: 'lower-news', number: 6, type: 'GT', title: 'Announcement.gtzip', shortTitle: 'Announcement', layers: [], text: [{ index: 0, name: 'Headline.Text', value: 'Breaking News' }], presets: [['Breaking News'], ['Coming Up Next'], ['Thank You']] },
       { key: 'composition', number: 7, type: 'Mix', title: 'Program Composition', shortTitle: 'Program Composition', layers: [{ index: 0, key: 'lower-news' }], text: [] },
       { key: 'cam-wide', number: 8, type: 'Capture', title: 'Stage Wide', shortTitle: 'Stage Wide', layers: [], text: [] },
