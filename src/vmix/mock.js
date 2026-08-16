@@ -3,7 +3,7 @@ const esc = (v) => String(v ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt
 export function createMockModel() {
   return {
     version: '29.0.0.1', edition: 'Pro', presetName: 'PIBvMix Demo Production', active: 1, preview: 4,
-    overlays: [{ number: 1, inputNumber: 7 }],
+    overlays: [{ number: 1, inputNumber: 7, preview: false }, { number: 2, inputNumber: 5, preview: true }],
     inputs: [
       { key: 'cam-1', number: 1, type: 'Capture', title: 'Camera 1', shortTitle: 'Camera 1', layers: [], text: [] },
       { key: 'cam-2', number: 2, type: 'Capture', title: 'Camera 2', shortTitle: 'Camera 2', layers: [], text: [] },
@@ -25,7 +25,7 @@ export function modelToXml(model) {
   const inputs = model.inputs.map((i) => `<input key="${esc(i.key)}" number="${i.number}" type="${esc(i.type)}" title="${esc(i.title)}" shortTitle="${esc(i.shortTitle)}" state="Running">${
     (i.layers || []).map((l) => `<overlay index="${l.index}" key="${esc(l.key)}" />`).join('')}${
     (i.text || []).map((t) => `<text index="${t.index}" name="${esc(t.name)}">${esc(t.value)}</text>`).join('')}</input>`).join('')
-  const overlays = model.overlays.map((o) => `<overlay number="${o.number}">${o.inputNumber || ''}</overlay>`).join('')
+  const overlays = model.overlays.map((o) => `<overlay number="${o.number}"${o.preview ? ' preview="True"' : ''}>${o.inputNumber || ''}</overlay>`).join('')
   return `<?xml version="1.0" encoding="utf-8"?><vmix><version>${esc(model.version)}</version><edition>${esc(model.edition)}</edition><preset>${esc(model.presetName)}</preset><inputs>${inputs}</inputs><overlays>${overlays}</overlays><preview>${model.preview}</preview><active>${model.active}</active></vmix>`
 }
 
