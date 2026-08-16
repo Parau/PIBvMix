@@ -2,7 +2,7 @@ export function buildOnAirSet(vmixState) {
   const children = new Map(vmixState.inputs.map((input) => [input.key, (input.layers || []).map((x) => x.key).filter(Boolean)]))
   const roots = new Set()
   if (vmixState.mainMix?.programKey) roots.add(vmixState.mainMix.programKey)
-  for (const overlay of vmixState.overlays || []) if (overlay.inputKey) roots.add(overlay.inputKey)
+  for (const overlay of vmixState.overlays || []) if (overlay.inputKey && !overlay.preview) roots.add(overlay.inputKey)
   const visited = new Set()
   const walk = (key) => {
     if (!key || visited.has(key)) return
