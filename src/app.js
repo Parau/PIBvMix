@@ -1,20 +1,21 @@
-import { createStore, initialState } from './state/store.js'
-import { VmixClient, normalizeTarget } from './vmix/client.js'
-import { MockVmixClient } from './vmix/mock.js'
-import { parseVmixXml } from './vmix/parser.js'
-import { VmixPoller } from './vmix/poller.js'
-import { buildOnAirSet } from './vmix/safety.js'
-import { verifyResourceFields } from './vmix/resolver.js'
-import { loadConfig, saveConfig } from './config/storage.js'
-import { downloadConfig, readConfigFile } from './config/backup.js'
-import { renderConfigure } from './ui/configure.js'
-import { renderControl } from './ui/control.js'
+import { createStore, initialState } from './state/store.js?v=0.2.0'
+import { VmixClient, normalizeTarget } from './vmix/client.js?v=0.2.0'
+import { MockVmixClient } from './vmix/mock.js?v=0.2.0'
+import { parseVmixXml } from './vmix/parser.js?v=0.2.0'
+import { VmixPoller } from './vmix/poller.js?v=0.2.0'
+import { buildOnAirSet } from './vmix/safety.js?v=0.2.0'
+import { verifyResourceFields } from './vmix/resolver.js?v=0.2.0'
+import { loadConfig, saveConfig } from './config/storage.js?v=0.2.0'
+import { downloadConfig, readConfigFile } from './config/backup.js?v=0.2.0'
+import { renderConfigure } from './ui/configure.js?v=0.2.0'
+import { renderControl } from './ui/control.js?v=0.2.0'
 
 const saved = loadConfig()
 const store = createStore({ ...initialState, config: saved || initialState.config })
 let client = null
 let poller = null
 let demoBackup = null
+let consecutivePollFailures = 0
 const commandLocks = new Map()
 const root = document.querySelector('#app')
 const newId = () => crypto.randomUUID?.() || `r-${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -31,6 +32,7 @@ function toast(message, kind = 'info', ms = 2200) {
 
 async function applyXml(xml) {
   const parsed = parseVmixXml(xml)
+  consecutivePollFailures = 0
   update((s) => {
     s.vmixState = parsed
     s.connection.status = 'connected'; s.connection.message = ''; s.connection.lastUpdated = Date.now()
@@ -41,9 +43,9 @@ async function applyXml(xml) {
 }
 
 function onPollError(err) {
+  consecutivePollFailures += 1
   update((s) => {
-    const wasConnected = s.connection.status === 'connected' || s.connection.status === 'degraded'
-    s.connection.status = wasConnected ? 'degraded' : 'disconnected'
+    s.connection.status = s.vmixState && consecutivePollFailures === 1 ? 'degraded' : 'disconnected'
     s.connection.message = err?.name === 'AbortError' ? 'vMix request timed out.' : (err?.message || 'Unable to reach vMix.')
     return s
   })
@@ -56,6 +58,12 @@ function startPoller() {
 }
 
 async function connect(target) {
+  poller?.stop()
+  if (store.getState().ui.demo) {
+    update((s) => { s.ui.demo = false; if (demoBackup) s.config = demoBackup; return s })
+    demoBackup = null
+  }
+  consecutivePollFailures = 0
   update((s) => { s.connection = { status:'connecting', message:'', lastUpdated:null }; return s })
   try {
     client = new VmixClient(target)
@@ -85,7 +93,6 @@ async function toggleDemo() {
 
 function seedDemoResources() {
   const current = store.getState()
-  // Demo uses a temporary palette and never overwrites the operator's persisted configuration.
   const by = current.vmixState.inputByKey
   const lower = by['lower-people']
   const peopleCatalog = [
@@ -138,6 +145,8 @@ async function sendResource(id) {
       await client.command('SelectTitlePreset',{Input:key,Value:resource.presetIndex})
       if(resource.verification?.mode==='verifiedFields') {
         state = await waitFor((s)=>verifyResourceFields(s.inputByKey[key],resource),1300,75)
+      } else {
+        state = await applyXml(await client.fetchState())
       }
       if(buildOnAirSet(state).has(key)) throw new Error('The Lower became ON AIR before Preview could be changed.')
     }
@@ -186,7 +195,34 @@ const actions = {
   sendResource,
 }
 
-function render(state) { state.mode==='control' ? renderControl(root,{state,actions}) : renderConfigure(root,{state,actions}) }
+let lastRenderFingerprint = ''
+function renderFingerprint(state) {
+  const vmix = state.vmixState
+  return JSON.stringify({
+    mode: state.mode,
+    connection: { status: state.connection.status, message: state.connection.message },
+    config: state.config,
+    ui: { query: state.ui.query, filter: state.ui.filter, demo: state.ui.demo, busyInputKeys: state.ui.busyInputKeys, toast: state.ui.toast },
+    vmix: vmix ? {
+      version: vmix.version, presetName: vmix.presetName, mainMix: vmix.mainMix, overlays: vmix.overlays,
+      inputs: vmix.inputs.map((input) => ({
+        key: input.key, number: input.number, type: input.type, title: input.title, shortTitle: input.shortTitle,
+        text: input.text, image: input.image, color: input.color, layers: input.layers,
+      })),
+    } : null,
+  })
+}
+
+function render(state) {
+  if (state.mode === 'configure' && root.querySelector('.modal-backdrop')) {
+    queueMicrotask(() => { if (!root.querySelector('.modal-backdrop')) render(store.getState()) })
+    return
+  }
+  const fingerprint = renderFingerprint(state)
+  if (fingerprint === lastRenderFingerprint) return
+  lastRenderFingerprint = fingerprint
+  state.mode==='control' ? renderControl(root,{state,actions}) : renderConfigure(root,{state,actions})
+}
 store.subscribe(render); render(store.getState())
 
 if (new URLSearchParams(location.search).get('demo') === '1') toggleDemo()
