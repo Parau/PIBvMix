@@ -18,7 +18,7 @@ export function renderConfigure(root, ctx) {
     if (!match) return false
     if (filter === 'titles') return title
     if (filter === 'other') return !title
-    if (filter === 'selected') return resources.some((r) => r.inputKey === input.key)
+    if (filter === 'selected') return resources.some((r) => r.inputKey === input.key) || state.config.titleSources.some((s) => s.inputKey === input.key)
     if (filter === 'unavailable') return false
     return true
   })
@@ -49,10 +49,13 @@ export function renderConfigure(root, ctx) {
         <div class="segmented">${['all','titles','other','selected','unavailable'].map((f) => `<button data-filter="${f}" class="${filter===f?'active':''}">${f === 'other' ? 'Other' : f[0].toUpperCase()+f.slice(1)}</button>`).join('')}</div>
         <div class="input-list">
           ${!vmix ? `<div class="empty"><strong>Connect or start Demo mode</strong><span>PIBvMix will read the resources from the production currently open in vMix.</span></div>` : inputs.map((input) => {
-            const title = isTitleCandidate(input); const selected = resources.some((r) => r.inputKey === input.key)
-            return `<article class="input-item ${selected?'selected':''}">
+            const title = isTitleCandidate(input)
+            const hasResources = resources.some((r) => r.inputKey === input.key)
+            const hasPresetCatalog = title && state.config.titleSources.some((s) => s.inputKey === input.key)
+            const configured = hasResources || hasPresetCatalog
+            return `<article class="input-item ${configured?'selected':''}">
               <div class="type-icon">${resourceIcon(input.type)}</div><div class="input-copy"><strong>${e(input.shortTitle || input.title)}</strong><span>#${input.number} · ${e(input.type)}${title ? ' · Title/Lower' : ''}</span></div>
-              ${title ? `<button class="btn mini ${selected?'accent':''}" data-import-title="${e(input.key)}">${selected ? 'Presets' : 'Import CSV'}</button>` : `<label class="select-box"><input type="checkbox" data-select-input="${e(input.key)}" ${selectedKeys.has(input.key)?'checked':''}><span></span></label>`}
+              ${title ? `<button class="btn mini ${configured?'accent':''}" data-import-title="${e(input.key)}">${configured ? 'Presets' : 'Import CSV'}</button>` : `<label class="select-box"><input type="checkbox" data-select-input="${e(input.key)}" ${selectedKeys.has(input.key)?'checked':''}><span></span></label>`}
             </article>`
           }).join('')}
           ${filter === 'unavailable' && unavailable.length ? unavailable.map((r)=>`<article class="input-item unavailable"><div class="type-icon">!</div><div class="input-copy"><strong>${e(r.label)}</strong><span>Missing GUID ${e(r.inputKey)}</span></div></article>`).join('') : ''}
@@ -110,25 +113,82 @@ function bindDrag(list, apply) {
 
 async function showCsvDialog(host, input, ctx) {
   const source = ctx.state.config.titleSources.find((x) => x.inputKey === input.key)
-  host.innerHTML = `<div class="modal-backdrop"><div class="modal"><button class="modal-close">×</button><p class="eyebrow">TITLE PRESETS</p><h2>${e(input.shortTitle || input.title)}</h2><p>Choose the CSV exported from this vMix Title. Each row can become its own fast Control resource.</p><label class="drop-file"><span>${icon('upload')}</span><strong>Choose Title Preset CSV</strong><small>The file is read locally and never uploaded.</small><input type="file" accept=".csv,text/csv" hidden></label>${source?`<div class="resync-note">${source.csv.rowCount} presets currently imported from <strong>${e(source.csv.fileName)}</strong>.</div>`:''}<div id="csv-preview"></div></div></div>`
+  const existingResources = ctx.state.config.resources.filter((r) => r.type === 'titlePreset' && r.inputKey === input.key)
+  const existingByIndex = new Map(existingResources.map((r) => [r.presetIndex, r]))
+
+  let metadata = source?.csv || null
+  let catalog = source?.presets?.length
+    ? source.presets.map((p) => ({ ...p, selected: existingByIndex.has(p.presetIndex), resourceId: existingByIndex.get(p.presetIndex)?.id || p.resourceId || null, label: existingByIndex.get(p.presetIndex)?.label || p.label }))
+    : existingResources.map((r) => ({ presetIndex: r.presetIndex, csvRow: r.csvRow || [], label: r.label, verification: r.verification || { mode: 'indexOnly', fieldNames: [] }, selected: true, resourceId: r.id }))
+
+  host.innerHTML = `<div class="modal-backdrop"><div class="modal"><button class="modal-close">×</button><p class="eyebrow">TITLE PRESETS</p><h2>${e(input.shortTitle || input.title)}</h2><p>Choose which people/titles will appear in Control and edit the display name here. Import CSV is only needed to load or re-sync the preset list.</p><div id="preset-manager"></div><details class="preset-import" ${catalog.length ? '' : 'open'}><summary>${catalog.length ? 'Import / re-sync CSV' : 'Import Title Preset CSV'}</summary><label class="drop-file"><span>${icon('upload')}</span><strong>Choose Title Preset CSV</strong><small>The file is read locally and never uploaded.</small><input type="file" accept=".csv,text/csv" hidden></label></details><div id="csv-error"></div></div></div>`
+
   host.querySelector('.modal-close').onclick = () => host.innerHTML = ''
-  host.querySelector('.drop-file').onclick = () => host.querySelector('.drop-file input').click()
-  host.querySelector('.drop-file input').onchange = async (ev) => {
+  const dropFile = host.querySelector('.drop-file')
+  dropFile.onclick = (ev) => { if (ev.target.tagName !== 'INPUT') dropFile.querySelector('input').click() }
+
+  const renderCatalog = () => {
+    const manager = host.querySelector('#preset-manager')
+    if (!catalog.length) {
+      manager.innerHTML = `<div class="empty"><strong>No presets imported yet</strong><span>Choose the CSV exported from this vMix Title to load the names.</span></div>`
+      return
+    }
+
+    manager.innerHTML = `<div class="csv-summary"><strong>${catalog.length} presets available</strong><span>${e(metadata?.fileName || 'Current configuration')}</span></div><div class="csv-rows">${catalog.map((p, i) => `<div class="csv-row preset-edit-row"><input type="checkbox" data-preset-selected="${i}" ${p.selected ? 'checked' : ''}><span class="preset-index">${p.presetIndex}</span><div class="preset-edit-copy"><input class="preset-name-input" data-preset-label="${i}" value="${e(p.label || labelForRow(p.csvRow || [], p.presetIndex))}" aria-label="Control name for preset ${p.presetIndex}"><small>${e((p.csvRow || []).join(' · ') || `Preset ${p.presetIndex}`)}</small></div></div>`).join('')}</div><div class="modal-actions"><button class="btn ghost" id="select-all">Select all</button><button class="btn ghost" id="select-none">Select none</button><button class="btn primary" id="apply-presets">Save presets</button></div>`
+
+    manager.querySelector('#select-all').onclick = () => manager.querySelectorAll('[data-preset-selected]').forEach((x) => x.checked = true)
+    manager.querySelector('#select-none').onclick = () => manager.querySelectorAll('[data-preset-selected]').forEach((x) => x.checked = false)
+    manager.querySelector('#apply-presets').onclick = () => {
+      const updatedCatalog = catalog.map((p, i) => ({
+        ...p,
+        selected: manager.querySelector(`[data-preset-selected="${i}"]`).checked,
+        label: manager.querySelector(`[data-preset-label="${i}"]`).value.trim() || labelForRow(p.csvRow || [], p.presetIndex),
+      }))
+      const resources = updatedCatalog.filter((p) => p.selected).map((p) => ({
+        id: p.resourceId || id(),
+        type: 'titlePreset',
+        label: p.label,
+        inputKey: input.key,
+        presetIndex: p.presetIndex,
+        csvRow: p.csvRow || [],
+        verification: p.verification || { mode: 'indexOnly', fieldNames: [] },
+      }))
+      ctx.actions.replaceTitleResources(input.key, resources, metadata || { fileName: 'Current configuration', importedAt: new Date().toISOString(), rowCount: updatedCatalog.length, sha256: 'legacy' }, updatedCatalog)
+      host.innerHTML = ''
+    }
+  }
+
+  renderCatalog()
+
+  dropFile.querySelector('input').onchange = async (ev) => {
     const file = ev.target.files[0]; if (!file) return
-    if (file.size > 1_000_000) return alert('CSV is larger than the v1 safety limit (1 MB).')
+    if (file.size > 1_000_000) {
+      host.querySelector('#csv-error').innerHTML = `<p class="error-box">CSV is larger than the v1 safety limit (1 MB).</p>`
+      return
+    }
     try {
-      const raw = await file.text(); const rows = parseCsv(raw); if (!rows.length) throw new Error('CSV contains no preset rows.')
+      const raw = await file.text()
+      const rows = parseCsv(raw)
+      if (!rows.length) throw new Error('CSV contains no preset rows.')
       const fieldNames = input.text?.slice(0, Math.max(...rows.map((r) => r.length))).map((x) => x.name) || []
-      const preview = host.querySelector('#csv-preview')
-      preview.innerHTML = `<div class="csv-summary"><strong>${rows.length} preset rows found</strong><span>${e(file.name)}</span></div><div class="csv-rows">${rows.map((r,i)=>`<label class="csv-row"><input type="checkbox" data-row="${i}" checked><span class="preset-index">${i}</span><span class="csv-label">${e(labelForRow(r,i))}</span><small>${e(r.join(' · '))}</small></label>`).join('')}</div><div class="modal-actions"><button class="btn ghost" id="select-none">Select none</button><button class="btn primary" id="accept-csv">Add selected to Control</button></div>`
-      preview.querySelector('#select-none').onclick = () => preview.querySelectorAll('[data-row]').forEach((x) => x.checked = false)
-      preview.querySelector('#accept-csv').onclick = async () => {
-        const chosen = [...preview.querySelectorAll('[data-row]:checked')].map((x) => Number(x.dataset.row))
-        const metadata = { fileName: file.name, importedAt: new Date().toISOString(), rowCount: rows.length, sha256: await sha256(raw) }
-        const resources = chosen.map((i) => ({ id: id(), type: 'titlePreset', label: labelForRow(rows[i], i), inputKey: input.key, presetIndex: i, csvRow: rows[i], verification: { mode: fieldNames.length >= rows[i].length ? 'verifiedFields' : 'indexOnly', fieldNames: fieldNames.slice(0, rows[i].length) } }))
-        ctx.actions.replaceTitleResources(input.key, resources, metadata)
-        host.innerHTML = ''
-      }
-    } catch (err) { host.querySelector('#csv-preview').innerHTML = `<p class="error-box">${e(err.message)}</p>` }
+      const previousByIndex = new Map(catalog.map((p) => [p.presetIndex, p]))
+      catalog = rows.map((row, presetIndex) => {
+        const previous = previousByIndex.get(presetIndex)
+        return {
+          presetIndex,
+          csvRow: row,
+          label: previous && JSON.stringify(previous.csvRow) === JSON.stringify(row) ? previous.label : labelForRow(row, presetIndex),
+          verification: { mode: fieldNames.length >= row.length ? 'verifiedFields' : 'indexOnly', fieldNames: fieldNames.slice(0, row.length) },
+          selected: previous ? previous.selected : true,
+          resourceId: previous && JSON.stringify(previous.csvRow) === JSON.stringify(row) ? previous.resourceId : null,
+        }
+      })
+      metadata = { fileName: file.name, importedAt: new Date().toISOString(), rowCount: rows.length, sha256: await sha256(raw) }
+      host.querySelector('#csv-error').innerHTML = ''
+      renderCatalog()
+      host.querySelector('.preset-import').open = false
+    } catch (err) {
+      host.querySelector('#csv-error').innerHTML = `<p class="error-box">${e(err.message)}</p>`
+    }
   }
 }
