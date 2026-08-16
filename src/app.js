@@ -17,6 +17,7 @@ let poller = null
 let demoBackup = null
 const commandLocks = new Map()
 const root = document.querySelector('#app')
+const newId = () => crypto.randomUUID?.() || `r-${Date.now()}-${Math.random().toString(16).slice(2)}`
 
 function update(fn) { store.setState((s) => fn(structuredClone(s))) }
 function persist(config) { try { saveConfig(config) } catch { toast('Configuration cannot be persisted in this browser.', 'error', 5000) } }
@@ -92,12 +93,12 @@ function seedDemoResources() {
     ['Maria Silva',1,['Maria Silva','@mariasilva']],
     ['David Lee',2,['David Lee','@davidlee']],
     ['Ana Costa',3,['Ana Costa','@anacosta']],
-  ].map(([label,presetIndex,csvRow]) => ({ label, presetIndex, csvRow, verification:{mode:'verifiedFields',fieldNames:['Name.Text','Instagram.Text']}, selected:true, resourceId:crypto.randomUUID() }))
+  ].map(([label,presetIndex,csvRow]) => ({ label, presetIndex, csvRow, verification:{mode:'verifiedFields',fieldNames:['Name.Text','Instagram.Text']}, selected:true, resourceId:newId() }))
   const resources = peopleCatalog.map((p) => ({ id:p.resourceId, type:'titlePreset', label:p.label, inputKey:'lower-people', presetIndex:p.presetIndex, csvRow:p.csvRow, verification:p.verification }))
   for (const key of ['video-1','image-1','cam-1','cam-2','cam-wide','video-2','image-2']) {
-    const input=by[key]; resources.push({id:crypto.randomUUID(),type:'input',label:input.shortTitle||input.title,inputKey:key})
+    const input=by[key]; resources.push({id:newId(),type:'input',label:input.shortTitle||input.title,inputKey:key})
   }
-  resources.splice(4,0,{id:crypto.randomUUID(),type:'titlePreset',label:'Breaking News',inputKey:'lower-news',presetIndex:0,csvRow:['Breaking News'],verification:{mode:'verifiedFields',fieldNames:['Headline.Text']}})
+  resources.splice(4,0,{id:newId(),type:'titlePreset',label:'Breaking News',inputKey:'lower-news',presetIndex:0,csvRow:['Breaking News'],verification:{mode:'verifiedFields',fieldNames:['Headline.Text']}})
   commitConfig((cfg) => {
     cfg.resources=resources
     cfg.titleSources=[{
@@ -153,7 +154,7 @@ const actions = {
   toConfigure(){ update((s)=>{s.mode='configure';s.ui.query='';s.ui.filter='all';return s}); if(poller){poller.interval=1100} },
   setQuery(value){ update((s)=>{s.ui.query=value;return s}) }, setFilter(value){ update((s)=>{s.ui.filter=value;return s}) },
   toggleInput(key,checked){
-    commitConfig((cfg)=>{ const idx=cfg.resources.findIndex((r)=>r.type==='input'&&r.inputKey===key); if(checked&&idx<0){ const input=store.getState().vmixState.inputByKey[key]; cfg.resources.push({id:crypto.randomUUID(),type:'input',label:input.shortTitle||input.title,inputKey:key}) } else if(!checked&&idx>=0) cfg.resources.splice(idx,1) })
+    commitConfig((cfg)=>{ const idx=cfg.resources.findIndex((r)=>r.type==='input'&&r.inputKey===key); if(checked&&idx<0){ const input=store.getState().vmixState.inputByKey[key]; cfg.resources.push({id:newId(),type:'input',label:input.shortTitle||input.title,inputKey:key}) } else if(!checked&&idx>=0) cfg.resources.splice(idx,1) })
   },
   removeResource(id){ commitConfig((cfg)=>{cfg.resources=cfg.resources.filter((r)=>r.id!==id)}) },
   renameResource(id,label){ commitConfig((cfg)=>{const r=cfg.resources.find((x)=>x.id===id);if(r)r.label=label.trim()||r.label}) },
