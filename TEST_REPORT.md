@@ -1,82 +1,53 @@
-# PIBvMix — Test Report
+# PIBvMix v0.2.0 — Final Audit & Test Report
 
 Date: **2026-08-16**
 
-## Automated core/emulator suite
+This build was re-audited immediately before the first real-venue integration against:
 
-Command:
+- official vMix 29 HTTP Web API and Shortcut Function documentation;
+- Bitfocus Companion vMix module architecture/state handling;
+- `vmix-js-utils` XML input modeling;
+- the established vMixUTC request-management patterns previously reviewed for this project.
 
-```bash
-npm test
-```
+## Corrections made during final audit
 
-Result: **10/10 passing**.
+1. **Preview-only overlays are no longer treated as ON AIR.** The emulator now emits an active overlay and a `preview="True"` overlay, matching modern vMix XML semantics.
+2. **Title PREVIEW indication is ambiguity-safe.** Resolution is performed against every configured preset for the same Title input; duplicate field values produce an ambiguous state rather than multiple PREVIEW badges.
+3. **Preset editing survives polling.** Background `/api` polling no longer rebuilds the page when nothing visually changed and never destroys an open Preset modal.
+4. **Demo → real vMix Connect is safe.** Connecting directly while Demo mode is active restores the operator's real configuration before persisting the real target.
+5. **Index-only Title actions refresh safety state** after `SelectTitlePreset` before changing Preview.
+6. **Repeated poll failures reach Disconnected** instead of remaining indefinitely Degraded; CONTROL resources become OFFLINE/disabled.
+7. Static assets are versioned as **v0.2.0** to reduce stale-cache risk on the event browser.
 
-Covered:
+## Automated results
 
-- vMix address normalization;
-- CSV parsing with quotes, commas, BOM and multiline values;
-- recursive ON AIR dependency graph and cycle handling;
-- mock `SelectTitlePreset` and `PreviewInput` state mutation;
-- preset field verification and stale-preset detection;
-- representative mock production structure;
-- localStorage failure handling;
-- explicit connection failure;
-- production `VmixClient` against the HTTP emulator;
-- emulator HTTP 200/500 behavior.
+### Node core + HTTP emulator
 
-## Playwright UI stress test
+**12/12 passed**
 
-Result: **12/12 scenarios passing, zero browser/page errors**.
+Coverage includes address normalization, RFC4180-style CSV edge cases, recursive/cyclic ON AIR graph, active-vs-preview overlay behavior, mock Title/Preview commands, field verification, ambiguous Title preset detection, storage failures, connection failures, production `VmixClient` against the HTTP emulator, HTTP 200/500 behavior, and zero-based Title preset commands used by the emulator.
 
-Scenarios exercised in Chromium:
+### Chromium / Playwright stress
 
-1. Demo mode boots and produces a valid vMix-like production.
-2. Preset manager displays the field mapping detected from vMix (`Name.Text`, `Instagram.Text`).
-3. CSV values are shown beside the corresponding vMix field names.
-4. The CONTROL button label can be renamed independently from the Lower data.
-5. CONFIGURE → CONTROL navigation works.
-6. `← Edit resources` is visible in CONTROL and returns to the same configuration.
-7. A nested ON AIR Lower is disabled.
-8. A Title preset changes the Title state and reaches Preview with verification.
-9. CONTROL search filters resources correctly.
-10. CONTROL → CONFIGURE preserves palette edits.
-11. **25 consecutive CONFIGURE/CONTROL round trips** preserve resource count and edited labels.
-12. Rapid clicks on resources sharing the same Lower do not leave the UI locked; reopening Presets after the stress cycle preserves the field mapping and edited label.
+**14/14 passed, 0 browser errors**
 
-## Compatibility finding fixed during stress testing
+Coverage includes Demo boot, vMix field mapping, Preset modal persistence across multiple polling cycles, independent CONTROL labels, CONFIGURE ↔ CONTROL navigation, visible Edit Resources return path, nested ON AIR blocking, preview-only overlay non-blocking, Title preset selection + state verification, search persistence across polling, 25 navigation round-trips, rapid same-Lower clicks, and Preset-manager consistency after stress.
 
-The test Chromium lacked `crypto.randomUUID()`. PIBvMix now has an ID-generation fallback instead of depending rigidly on that browser API.
+### Browser HTTP smoke tests
 
-## Demo Title model
+**2/2 passed**
 
-The people Lower now mirrors the common production structure discussed for PIBvMix:
+- Chromium production `VmixClient` → real local HTTP emulator.
+- Demo mode → direct Connect to HTTP emulator without leaking Demo resources into the real configuration.
 
-```text
-Name.Text       ← CSV column 1
-Instagram.Text  ← CSV column 2
-```
+### Syntax
 
-Example preset:
+All JavaScript/MJS source, emulator, and test files pass `node --check`.
 
-```text
-Name.Text       = John Smith
-Instagram.Text  = @johnsmith
-Control label   = John Smith   # independently editable
-```
+## Remaining real-world integration gate
 
-## Still requires real vMix
+No emulator can prove the venue-specific chain:
 
-The remaining integration gate cannot be fully emulated:
+`GitHub Pages HTTPS → Chrome/Edge Local Network Access → venue LAN/firewall → real vMix Web Controller :8088`.
 
-```text
-GitHub Pages HTTPS
-      ↓
-Chrome / Edge Local Network Access
-      ↓
-venue LAN
-      ↓
-real vMix Web API :8088
-```
-
-This is reserved for the venue validation checklist in `DEVELOPMENT_PLAN.md`.
+The application is intentionally structured so this is a short integration validation, not development. See README/SPEC for the venue checklist.
