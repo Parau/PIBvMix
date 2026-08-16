@@ -88,11 +88,11 @@ function seedDemoResources() {
   const by = current.vmixState.inputByKey
   const lower = by['lower-people']
   const peopleCatalog = [
-    ['John Smith — CEO',0,['John Smith','CEO']],
-    ['Maria Silva — CFO',1,['Maria Silva','CFO']],
-    ['David Lee — CTO',2,['David Lee','CTO']],
-    ['Ana Costa — Host',3,['Ana Costa','Host']],
-  ].map(([label,presetIndex,csvRow]) => ({ label, presetIndex, csvRow, verification:{mode:'verifiedFields',fieldNames:['Name.Text','Role.Text']}, selected:true, resourceId:crypto.randomUUID() }))
+    ['John Smith',0,['John Smith','@johnsmith']],
+    ['Maria Silva',1,['Maria Silva','@mariasilva']],
+    ['David Lee',2,['David Lee','@davidlee']],
+    ['Ana Costa',3,['Ana Costa','@anacosta']],
+  ].map(([label,presetIndex,csvRow]) => ({ label, presetIndex, csvRow, verification:{mode:'verifiedFields',fieldNames:['Name.Text','Instagram.Text']}, selected:true, resourceId:crypto.randomUUID() }))
   const resources = peopleCatalog.map((p) => ({ id:p.resourceId, type:'titlePreset', label:p.label, inputKey:'lower-people', presetIndex:p.presetIndex, csvRow:p.csvRow, verification:p.verification }))
   for (const key of ['video-1','image-1','cam-1','cam-2','cam-wide','video-2','image-2']) {
     const input=by[key]; resources.push({id:crypto.randomUUID(),type:'input',label:input.shortTitle||input.title,inputKey:key})
