@@ -1,0 +1,15 @@
+<!doctype html><meta charset="utf-8"><title>PIBvMix Effective Verification</title><div id="app"></div>
+<script type="module">
+import { renderControl } from '../src/ui/control.js'
+window.calls=[]
+const resources=[
+ {id:'current',type:'titlePreset',label:'Nome 01',inputKey:'lower',presetIndex:0,csvRow:['Nome 01','Cargo 01','img.jpg'],verification:{mode:'indexOnly',fieldNames:['TextBlock2.Text','TextBlock1.Text']}},
+ {id:'next',type:'titlePreset',label:'Nome 02',inputKey:'lower',presetIndex:1,csvRow:['Nome 02','Cargo 02','img.jpg'],verification:{mode:'indexOnly',fieldNames:['TextBlock2.Text','TextBlock1.Text']}},
+]
+const lower={key:'lower',number:5,type:'GT',title:'Lower.gtzip',shortTitle:'Lower',layers:[],text:[{name:'TextBlock1.Text',value:'Cargo 01'},{name:'TextBlock2.Text',value:'Nome 01'}],image:[{name:'Image1.Source',value:'img.jpg'}],color:[]}
+const cam={key:'cam',number:1,type:'Capture',title:'Cam',shortTitle:'Cam',layers:[],text:[],image:[],color:[]}
+const inputs=[cam,lower], inputByKey={cam,lower}
+const state={connection:{status:'connected'},ui:{demo:false,query:'',filter:'all',busyInputKeys:[],toast:null},config:{resources},vmixState:{inputs,inputByKey,inputKeyByNumber:{1:'cam',5:'lower'},mainMix:{programKey:'cam',previewKey:null},overlays:[{number:2,inputKey:'lower',preview:false}],additionalMixes:[]}}
+const actions={toConfigure(){},setQuery(){},setFilter(){},sendResource(id){window.calls.push(['send',id])},swapResource(id){window.calls.push(['swap',id])}}
+renderControl(document.querySelector('#app'),{state,actions})
+</script>
