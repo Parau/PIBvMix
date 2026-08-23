@@ -4,11 +4,11 @@ import { MockVmixClient } from './vmix/mock.js?v=0.3.0'
 import { parseVmixXml } from './vmix/parser.js?v=0.2.0'
 import { VmixPoller } from './vmix/poller.js?v=0.2.0'
 import { buildOnAirSet, getTitleSwapContext } from './vmix/safety.js?v=0.3.0'
-import { resolveTitleResource, verifyResourceFields } from './vmix/resolver.js?v=0.2.0'
+import { isResourceFullyVerifiable, resolveTitleResource, verifyResourceFields } from './vmix/resolver.js?v=0.3.1'
 import { loadConfig, saveConfig } from './config/storage.js?v=0.2.0'
 import { downloadConfig, readConfigFile } from './config/backup.js?v=0.2.0'
-import { renderConfigure } from './ui/configure.js?v=0.2.0'
-import { renderControl } from './ui/control.js?v=0.3.0'
+import { renderConfigure } from './ui/configure.js?v=0.3.1'
+import { renderControl } from './ui/control.js?v=0.3.1'
 
 const saved = loadConfig()
 const store = createStore({ ...initialState, config: saved || initialState.config })
@@ -21,6 +21,7 @@ const root = document.querySelector('#app')
 const newId = () => crypto.randomUUID?.() || `r-${Date.now()}-${Math.random().toString(16).slice(2)}`
 const SWAP_TRANSITION_TIMEOUT_MS = 5000
 
+function logCommand(event, details = {}) { console.info(`[PIBvMix][command] ${event}`, details) }
 function update(fn) { store.setState((s) => fn(structuredClone(s))) }
 function persist(config) { try { saveConfig(config) } catch { toast('Configuration cannot be persisted in this browser.', 'error', 5000) } }
 function commitConfig(mutator) {
@@ -136,17 +137,22 @@ function overlayInputKey(state, overlayNumber) {
 }
 
 async function tryRestoreSwappedLower(inputKey, overlayNumber, originalResource) {
-  if (!originalResource || originalResource.verification?.mode !== 'verifiedFields' || !originalResource.verification?.fieldNames?.length) return false
+  if (!originalResource) return false
   try {
     let state = await applyXml(await client.fetchState())
+    const input = state.inputByKey[inputKey]
+    if (!isResourceFullyVerifiable(input, originalResource)) return false
     if (overlayInputKey(state, overlayNumber) || buildOnAirSet(state).has(inputKey)) return false
+    logCommand('SWAP rollback select preset', { inputKey, overlayNumber, presetIndex: originalResource.presetIndex, label: originalResource.label })
     await client.command('SelectTitlePreset', { Input: inputKey, Value: originalResource.presetIndex })
     state = await waitFor((s) => verifyResourceFields(s.inputByKey[inputKey], originalResource), 1800, 75)
     if (overlayInputKey(state, overlayNumber) || buildOnAirSet(state).has(inputKey)) return false
+    logCommand('SWAP rollback overlay in', { inputKey, overlayNumber })
     await client.command(`OverlayInput${overlayNumber}In`, { Input: inputKey })
     await waitFor((s) => overlayInputKey(s, overlayNumber) === inputKey && verifyResourceFields(s.inputByKey[inputKey], originalResource), SWAP_TRANSITION_TIMEOUT_MS, 75)
     return true
-  } catch {
+  } catch (err) {
+    console.error('[PIBvMix][command] SWAP rollback failed', err)
     return false
   }
 }
@@ -161,6 +167,7 @@ async function swapResource(id) {
   let originalResource = null
   let overlayNumber = null
   let lowerWasTakenOut = false
+  logCommand('SWAP start', { id, inputKey:key, presetIndex:resource.presetIndex, label:resource.label })
   try {
     let state = await applyXml(await client.fetchState())
     const input = state.inputByKey[key]
@@ -168,22 +175,26 @@ async function swapResource(id) {
 
     const group = store.getState().config.resources.filter((r) => r.type === 'titlePreset' && r.inputKey === key)
     const resolution = resolveTitleResource(input, group)
+    logCommand('SWAP current resolution', { inputKey:key, status:resolution.status, current:resolution.resource?.label || null })
     if (resolution.status !== 'exact' || !resolution.resource) throw new Error('The current Lower preset cannot be identified safely.')
     originalResource = resolution.resource
     if (originalResource.id === resource.id) return toast(`${resource.label} is already CURRENT.`, 'info')
-    if (originalResource.verification?.mode !== 'verifiedFields' || !originalResource.verification?.fieldNames?.length || resource.verification?.mode !== 'verifiedFields' || !resource.verification?.fieldNames?.length) {
-      throw new Error('SWAP requires verified Title fields for both current and target presets.')
+    if (!isResourceFullyVerifiable(input, originalResource) || !isResourceFullyVerifiable(input, resource)) {
+      throw new Error('SWAP requires all Title fields for both current and target presets to be verifiable.')
     }
 
     const context = getTitleSwapContext(state, key)
-    if (!context.eligible) throw new Error('This Lower is ON AIR in a configuration that cannot be swapped safely.')
+    logCommand('SWAP context', { inputKey:key, ...context })
+    if (!context.eligible) throw new Error(`This Lower cannot be swapped safely (${context.reason}).`)
     overlayNumber = context.overlayNumber
 
+    logCommand('SWAP overlay out', { inputKey:key, overlayNumber })
     await client.command(`OverlayInput${overlayNumber}Out`)
     lowerWasTakenOut = true
     state = await waitFor((s) => !overlayInputKey(s, overlayNumber) && !buildOnAirSet(s).has(key), SWAP_TRANSITION_TIMEOUT_MS, 75)
 
     if (overlayInputKey(state, overlayNumber)) throw new Error('The Overlay did not become free.')
+    logCommand('SWAP select target preset', { inputKey:key, overlayNumber, presetIndex:resource.presetIndex, label:resource.label })
     await client.command('SelectTitlePreset', { Input: key, Value: resource.presetIndex })
     state = await waitFor((s) => verifyResourceFields(s.inputByKey[key], resource), 1800, 75)
 
@@ -194,11 +205,14 @@ async function swapResource(id) {
     if (!verifyResourceFields(state.inputByKey[key], resource)) throw new Error('The target preset changed before it could return ON AIR.')
     if (buildOnAirSet(state).has(key) || overlayInputKey(state, overlayNumber)) throw new Error('The vMix state changed before the Lower could return ON AIR.')
 
+    logCommand('SWAP overlay in', { inputKey:key, overlayNumber })
     await client.command(`OverlayInput${overlayNumber}In`, { Input: key })
     await waitFor((s) => overlayInputKey(s, overlayNumber) === key && verifyResourceFields(s.inputByKey[key], resource), SWAP_TRANSITION_TIMEOUT_MS, 75)
     lowerWasTakenOut = false
+    logCommand('SWAP complete', { inputKey:key, overlayNumber, presetIndex:resource.presetIndex, label:resource.label })
     toast(`${resource.label} is CURRENT and ON AIR.`, 'success')
   } catch (err) {
+    console.error('[PIBvMix][command] SWAP failed', { inputKey:key, target:resource.label, error:err })
     const restored = lowerWasTakenOut && overlayNumber !== null && originalResource
       ? await tryRestoreSwappedLower(key, overlayNumber, originalResource)
       : false
@@ -216,24 +230,31 @@ async function sendResource(id) {
   if (commandLocks.has(key)) return
   commandLocks.set(key, true)
   setBusy(key,true)
+  logCommand('sendResource start', { id, inputKey:key, type:resource.type, presetIndex:resource.presetIndex, label:resource.label })
   try {
     let state = store.getState().vmixState
     if (!state || Date.now()-(store.getState().connection.lastUpdated||0)>650) state = await applyXml(await client.fetchState())
     const input=state.inputByKey[key]; if(!input) throw new Error('Resource is unavailable in the current vMix production.')
     if(resource.type==='titlePreset'){
       if(buildOnAirSet(state).has(key)) throw new Error('This Lower is ON AIR and cannot be changed.')
+      logCommand('SelectTitlePreset', { inputKey:key, presetIndex:resource.presetIndex, label:resource.label })
       await client.command('SelectTitlePreset',{Input:key,Value:resource.presetIndex})
-      if(resource.verification?.mode==='verifiedFields') {
+      if(isResourceFullyVerifiable(input, resource)) {
         state = await waitFor((s)=>verifyResourceFields(s.inputByKey[key],resource),1300,75)
       } else {
         state = await applyXml(await client.fetchState())
       }
       if(buildOnAirSet(state).has(key)) throw new Error('The Lower became ON AIR before Preview could be changed.')
     }
+    logCommand('PreviewInput', { inputKey:key, label:resource.label })
     await client.command('PreviewInput',{Input:key,Mix:0})
     await waitFor((s)=>s.mainMix.previewKey===key)
+    logCommand('sendResource complete', { inputKey:key, label:resource.label })
     toast(`${resource.label} is in Preview.`, 'success')
-  } catch(err){ toast(err.message || 'Command failed.', 'error', 4200) }
+  } catch(err){
+    console.error('[PIBvMix][command] sendResource failed', { inputKey:key, label:resource.label, error:err })
+    toast(err.message || 'Command failed.', 'error', 4200)
+  }
   finally { setBusy(key,false); commandLocks.delete(key) }
 }
 
