@@ -15,11 +15,13 @@ test('production VmixClient works against HTTP emulator', async()=>{
   xml=await client.fetchState(); assert.match(xml,/<preview>3<\/preview>/)
 })
 
-test('HTTP emulator exposes vMix-like state and commands',async()=>{
-  let xml=await (await fetch('http://127.0.0.1:18088/api')).text(); assert.match(xml,/<vmix>/); assert.match(xml,/<preview>\d+<\/preview>/); assert.match(xml,/<overlay number="2" preview="True">5<\/overlay>/)
-  let r=await fetch('http://127.0.0.1:18088/api/?Function=PreviewInput&Input=video-1&Mix=0'); assert.equal(r.status,200)
-  xml=await (await fetch('http://127.0.0.1:18088/api')).text(); assert.match(xml,/<preview>3<\/preview>/)
+test('HTTP emulator exposes safe Lower OUT -> preset -> IN swap sequence',async()=>{
+  let xml=await (await fetch('http://127.0.0.1:18088/api')).text(); assert.match(xml,/<vmix>/); assert.match(xml,/<overlay number="2">5<\/overlay>/)
+  let r=await fetch('http://127.0.0.1:18088/api/?Function=OverlayInput2Out'); assert.equal(r.status,200)
+  xml=await (await fetch('http://127.0.0.1:18088/api')).text(); assert.match(xml,/<overlay number="2"><\/overlay>/)
   r=await fetch('http://127.0.0.1:18088/api/?Function=SelectTitlePreset&Input=lower-people&Value=2'); assert.equal(r.status,200)
   xml=await (await fetch('http://127.0.0.1:18088/api')).text(); assert.match(xml,/David Lee/); assert.match(xml,/@davidlee/)
+  r=await fetch('http://127.0.0.1:18088/api/?Function=OverlayInput2In&Input=lower-people'); assert.equal(r.status,200)
+  xml=await (await fetch('http://127.0.0.1:18088/api')).text(); assert.match(xml,/<overlay number="2">5<\/overlay>/)
   r=await fetch('http://127.0.0.1:18088/api/?Function=PreviewInput&Input=missing-guid'); assert.equal(r.status,500)
 })

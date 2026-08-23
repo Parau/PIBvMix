@@ -3,7 +3,7 @@ const esc = (v) => String(v ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt
 export function createMockModel() {
   return {
     version: '29.0.0.1', edition: 'Pro', presetName: 'PIBvMix Demo Production', active: 1, preview: 4,
-    overlays: [{ number: 1, inputNumber: 7, preview: false }, { number: 2, inputNumber: 5, preview: true }],
+    overlays: [{ number: 1, inputNumber: 7, preview: false }, { number: 2, inputNumber: 5, preview: false }],
     inputs: [
       { key: 'cam-1', number: 1, type: 'Capture', title: 'Camera 1', shortTitle: 'Camera 1', layers: [], text: [] },
       { key: 'cam-2', number: 2, type: 'Capture', title: 'Camera 2', shortTitle: 'Camera 2', layers: [], text: [] },
@@ -29,6 +29,10 @@ export function modelToXml(model) {
   return `<?xml version="1.0" encoding="utf-8"?><vmix><version>${esc(model.version)}</version><edition>${esc(model.edition)}</edition><preset>${esc(model.presetName)}</preset><inputs>${inputs}</inputs><overlays>${overlays}</overlays><preview>${model.preview}</preview><active>${model.active}</active></vmix>`
 }
 
+function findInput(model, ref) {
+  return model.inputs.find((x) => x.key === ref || x.number === Number(ref) || x.shortTitle === ref || x.title === ref)
+}
+
 export class MockVmixClient {
   constructor({ latencyMs = 45 } = {}) { this.target = 'mock://vmix'; this.model = createMockModel(); this.latencyMs = latencyMs; this.failNext = false }
   delay() { return new Promise((r) => setTimeout(r, this.latencyMs)) }
@@ -37,8 +41,26 @@ export class MockVmixClient {
   async command(functionName, params = {}) {
     await this.delay()
     if (this.failNext) { this.failNext = false; throw new Error('Simulated vMix HTTP 500') }
-    const inputRef = params.Input
-    const input = this.model.inputs.find((x) => x.key === inputRef || x.number === Number(inputRef) || x.shortTitle === inputRef || x.title === inputRef)
+
+    const overlayMatch = /^OverlayInput(\d+)(In|Out)$/.exec(functionName)
+    if (overlayMatch) {
+      const overlayNumber = Number(overlayMatch[1])
+      const direction = overlayMatch[2]
+      const overlay = this.model.overlays.find((x) => x.number === overlayNumber)
+      if (!overlay) throw new Error('vMix HTTP 500: overlay not found')
+      if (direction === 'Out') {
+        overlay.inputNumber = 0
+        overlay.preview = false
+      } else {
+        const input = findInput(this.model, params.Input)
+        if (!input) throw new Error('vMix HTTP 500: input not found')
+        overlay.inputNumber = input.number
+        overlay.preview = false
+      }
+      return 'OK'
+    }
+
+    const input = findInput(this.model, params.Input)
     if (!input) throw new Error('vMix HTTP 500: input not found')
     if (functionName === 'PreviewInput') this.model.preview = input.number
     else if (functionName === 'SelectTitlePreset') {

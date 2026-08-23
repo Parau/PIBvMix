@@ -1,4 +1,4 @@
-import { buildOnAirSet } from '../vmix/safety.js?v=0.2.0'
+import { buildOnAirSet, getTitleSwapContext } from '../vmix/safety.js?v=0.3.0'
 import { resolveTitleResource } from '../vmix/resolver.js?v=0.2.0'
 import { resourceIcon, icon } from './icons.js?v=0.2.0'
 
@@ -16,6 +16,7 @@ export function renderControl(root, ctx) {
     titleGroups.get(resource.inputKey).push(resource)
   }
   const titleResolution = new Map([...titleGroups].map(([key, group]) => [key, resolveTitleResource(vmix?.inputByKey[key], group)]))
+  const titleSwapContext = new Map([...titleGroups].map(([key]) => [key, getTitleSwapContext(vmix, key)]))
   const q = state.ui.query.toLowerCase()
   const filter = state.ui.filter
   const visible = resources.filter((r) => {
@@ -36,18 +37,22 @@ export function renderControl(root, ctx) {
   </header>
   <main class="control-main">
     <section class="control-tools"><div class="search-row control-search"><span>${icon('search')}</span><input id="control-search" value="${e(state.ui.query)}" placeholder="Find a resource fast…"></div><div class="segmented compact">${['all','titles','video','image'].map((f)=>`<button data-filter="${f}" class="${filter===f?'active':''}">${f[0].toUpperCase()+f.slice(1)}</button>`).join('')}</div></section>
-    ${!vmix ? `<div class="control-empty"><div class="spinner"></div><strong>${state.connection.status === 'disconnected' ? 'vMix disconnected' : 'Loading vMix state…'}</strong><span>Resource controls stay disabled until a valid live state is known.</span></div>` : `<section class="resource-grid">${visible.map((r) => card(r, vmix, onAir, state, titleResolution)).join('')}</section>`}
+    ${!vmix ? `<div class="control-empty"><div class="spinner"></div><strong>${state.connection.status === 'disconnected' ? 'vMix disconnected' : 'Loading vMix state…'}</strong><span>Resource controls stay disabled until a valid live state is known.</span></div>` : `<section class="resource-grid">${visible.map((r) => card(r, vmix, onAir, state, titleResolution, titleSwapContext)).join('')}</section>`}
   </main>
   ${state.ui.toast ? `<div class="toast ${e(state.ui.toast.kind || '')}">${e(state.ui.toast.message)}</div>` : ''}`
   bind(root, ctx)
 }
 
-function card(r, vmix, onAir, state, titleResolution) {
+function card(r, vmix, onAir, state, titleResolution, titleSwapContext) {
   const input = vmix.inputByKey[r.inputKey]
   const missing = !input
   const offline = state.connection.status === 'disconnected'
   const busy = state.ui.busyInputKeys.includes(r.inputKey)
   const blocked = r.type === 'titlePreset' && onAir.has(r.inputKey)
+  const resolution = r.type === 'titlePreset' ? titleResolution.get(r.inputKey) : null
+  const isCurrent = blocked && resolution?.status === 'exact' && resolution.resource?.id === r.id
+  const swapContext = r.type === 'titlePreset' ? titleSwapContext.get(r.inputKey) : null
+  const canSwap = blocked && !offline && !busy && !isCurrent && swapContext?.eligible && resolution?.status === 'exact' && resolution.resource?.verification?.mode === 'verifiedFields' && resolution.resource?.verification?.fieldNames?.length && r.verification?.mode === 'verifiedFields' && r.verification?.fieldNames?.length
   let status = 'READY', cls = 'ready'
   if (missing) { status = 'UNAVAILABLE'; cls = 'unavailable' }
   else if (offline) { status = 'OFFLINE'; cls = 'unavailable' }
@@ -55,16 +60,21 @@ function card(r, vmix, onAir, state, titleResolution) {
   else if (blocked) { status = 'ON AIR'; cls = 'onair' }
   else if (vmix.mainMix.previewKey === r.inputKey) {
     if (r.type === 'titlePreset') {
-      const resolved = titleResolution.get(r.inputKey)
-      if (resolved?.status === 'exact' && resolved.resource?.id === r.id) { status = 'PREVIEW'; cls = 'preview' }
+      if (resolution?.status === 'exact' && resolution.resource?.id === r.id) { status = 'PREVIEW'; cls = 'preview' }
     } else { status = 'PREVIEW'; cls = 'preview' }
   }
   if (vmix.mainMix.programKey === r.inputKey && r.type !== 'titlePreset') { status = 'PROGRAM'; cls = 'program' }
   const typeName = r.type === 'titlePreset' ? 'Title' : input?.type || 'Input'
+  const content = `<div class="resource-symbol">${resourceIcon(input?.type || (r.type==='titlePreset'?'title':''))}</div>
+    <div class="resource-copy"><strong>${e(r.label)}</strong><span>${e(typeName)}${r.type==='titlePreset'?` · Preset ${r.presetIndex}`:''}</span></div>`
+
+  if (blocked && !missing && !offline && !busy) {
+    const badges = `<div class="state-badges">${isCurrent ? '<span class="state-badge current">CURRENT</span>' : ''}${canSwap ? `<button class="state-badge swap" type="button" data-swap-resource="${e(r.id)}" title="Transition the current Lower out, load this preset, verify it, then transition it back in.">SWAP</button>` : ''}<span class="state-badge onair">ON AIR</span></div>`
+    return `<article class="resource-card onair blocked-card" data-blocked-resource="${e(r.id)}">${content}${badges}</article>`
+  }
+
   return `<button class="resource-card ${cls}" data-resource="${e(r.id)}" ${missing || offline || blocked || busy ? 'disabled':''}>
-    <div class="resource-symbol">${resourceIcon(input?.type || (r.type==='titlePreset'?'title':''))}</div>
-    <div class="resource-copy"><strong>${e(r.label)}</strong><span>${e(typeName)}${r.type==='titlePreset'?` · Preset ${r.presetIndex}`:''}</span></div>
-    <span class="state-badge ${cls}">${status}</span>
+    ${content}<span class="state-badge ${cls}">${status}</span>
   </button>`
 }
 
@@ -73,4 +83,5 @@ function bind(root, ctx) {
   root.querySelector('#control-search')?.addEventListener('input', (ev) => ctx.actions.setQuery(ev.target.value))
   root.querySelectorAll('[data-filter]').forEach((x) => x.addEventListener('click', () => ctx.actions.setFilter(x.dataset.filter)))
   root.querySelectorAll('[data-resource]').forEach((x) => x.addEventListener('click', () => ctx.actions.sendResource(x.dataset.resource)))
+  root.querySelectorAll('[data-swap-resource]').forEach((x) => x.addEventListener('click', (ev) => { ev.stopPropagation(); ctx.actions.swapResource(x.dataset.swapResource) }))
 }

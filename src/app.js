@@ -1,14 +1,14 @@
 import { createStore, initialState } from './state/store.js?v=0.2.0'
 import { VmixClient, normalizeTarget } from './vmix/client.js?v=0.2.0'
-import { MockVmixClient } from './vmix/mock.js?v=0.2.0'
+import { MockVmixClient } from './vmix/mock.js?v=0.3.0'
 import { parseVmixXml } from './vmix/parser.js?v=0.2.0'
 import { VmixPoller } from './vmix/poller.js?v=0.2.0'
-import { buildOnAirSet } from './vmix/safety.js?v=0.2.0'
-import { verifyResourceFields } from './vmix/resolver.js?v=0.2.0'
+import { buildOnAirSet, getTitleSwapContext } from './vmix/safety.js?v=0.3.0'
+import { resolveTitleResource, verifyResourceFields } from './vmix/resolver.js?v=0.2.0'
 import { loadConfig, saveConfig } from './config/storage.js?v=0.2.0'
 import { downloadConfig, readConfigFile } from './config/backup.js?v=0.2.0'
 import { renderConfigure } from './ui/configure.js?v=0.2.0'
-import { renderControl } from './ui/control.js?v=0.2.0'
+import { renderControl } from './ui/control.js?v=0.3.0'
 
 const saved = loadConfig()
 const store = createStore({ ...initialState, config: saved || initialState.config })
@@ -19,6 +19,7 @@ let consecutivePollFailures = 0
 const commandLocks = new Map()
 const root = document.querySelector('#app')
 const newId = () => crypto.randomUUID?.() || `r-${Date.now()}-${Math.random().toString(16).slice(2)}`
+const SWAP_TRANSITION_TIMEOUT_MS = 5000
 
 function update(fn) { store.setState((s) => fn(structuredClone(s))) }
 function persist(config) { try { saveConfig(config) } catch { toast('Configuration cannot be persisted in this browser.', 'error', 5000) } }
@@ -130,6 +131,85 @@ async function waitFor(predicate, timeoutMs=1800, step=90) {
   throw new Error('vMix state did not confirm the command in time.')
 }
 
+function overlayInputKey(state, overlayNumber) {
+  return state.overlays?.find((overlay) => overlay.number === overlayNumber && !overlay.preview)?.inputKey || null
+}
+
+async function tryRestoreSwappedLower(inputKey, overlayNumber, originalResource) {
+  if (!originalResource || originalResource.verification?.mode !== 'verifiedFields' || !originalResource.verification?.fieldNames?.length) return false
+  try {
+    let state = await applyXml(await client.fetchState())
+    if (overlayInputKey(state, overlayNumber) || buildOnAirSet(state).has(inputKey)) return false
+    await client.command('SelectTitlePreset', { Input: inputKey, Value: originalResource.presetIndex })
+    state = await waitFor((s) => verifyResourceFields(s.inputByKey[inputKey], originalResource), 1800, 75)
+    if (overlayInputKey(state, overlayNumber) || buildOnAirSet(state).has(inputKey)) return false
+    await client.command(`OverlayInput${overlayNumber}In`, { Input: inputKey })
+    await waitFor((s) => overlayInputKey(s, overlayNumber) === inputKey && verifyResourceFields(s.inputByKey[inputKey], originalResource), SWAP_TRANSITION_TIMEOUT_MS, 75)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function swapResource(id) {
+  const resource = store.getState().config.resources.find((r) => r.id === id)
+  if (!resource || resource.type !== 'titlePreset' || !client) return
+  const key = resource.inputKey
+  if (commandLocks.has(key)) return
+  commandLocks.set(key, true)
+  setBusy(key, true)
+  let originalResource = null
+  let overlayNumber = null
+  let lowerWasTakenOut = false
+  try {
+    let state = await applyXml(await client.fetchState())
+    const input = state.inputByKey[key]
+    if (!input) throw new Error('Resource is unavailable in the current vMix production.')
+
+    const group = store.getState().config.resources.filter((r) => r.type === 'titlePreset' && r.inputKey === key)
+    const resolution = resolveTitleResource(input, group)
+    if (resolution.status !== 'exact' || !resolution.resource) throw new Error('The current Lower preset cannot be identified safely.')
+    originalResource = resolution.resource
+    if (originalResource.id === resource.id) return toast(`${resource.label} is already CURRENT.`, 'info')
+    if (originalResource.verification?.mode !== 'verifiedFields' || !originalResource.verification?.fieldNames?.length || resource.verification?.mode !== 'verifiedFields' || !resource.verification?.fieldNames?.length) {
+      throw new Error('SWAP requires verified Title fields for both current and target presets.')
+    }
+
+    const context = getTitleSwapContext(state, key)
+    if (!context.eligible) throw new Error('This Lower is ON AIR in a configuration that cannot be swapped safely.')
+    overlayNumber = context.overlayNumber
+
+    await client.command(`OverlayInput${overlayNumber}Out`)
+    lowerWasTakenOut = true
+    state = await waitFor((s) => !overlayInputKey(s, overlayNumber) && !buildOnAirSet(s).has(key), SWAP_TRANSITION_TIMEOUT_MS, 75)
+
+    if (overlayInputKey(state, overlayNumber)) throw new Error('The Overlay did not become free.')
+    await client.command('SelectTitlePreset', { Input: key, Value: resource.presetIndex })
+    state = await waitFor((s) => verifyResourceFields(s.inputByKey[key], resource), 1800, 75)
+
+    if (buildOnAirSet(state).has(key)) throw new Error('The Lower became ON AIR unexpectedly while preparing the swap.')
+    if (overlayInputKey(state, overlayNumber)) throw new Error('The Overlay was occupied while preparing the swap.')
+
+    state = await applyXml(await client.fetchState())
+    if (!verifyResourceFields(state.inputByKey[key], resource)) throw new Error('The target preset changed before it could return ON AIR.')
+    if (buildOnAirSet(state).has(key) || overlayInputKey(state, overlayNumber)) throw new Error('The vMix state changed before the Lower could return ON AIR.')
+
+    await client.command(`OverlayInput${overlayNumber}In`, { Input: key })
+    await waitFor((s) => overlayInputKey(s, overlayNumber) === key && verifyResourceFields(s.inputByKey[key], resource), SWAP_TRANSITION_TIMEOUT_MS, 75)
+    lowerWasTakenOut = false
+    toast(`${resource.label} is CURRENT and ON AIR.`, 'success')
+  } catch (err) {
+    const restored = lowerWasTakenOut && overlayNumber !== null && originalResource
+      ? await tryRestoreSwappedLower(key, overlayNumber, originalResource)
+      : false
+    const suffix = restored ? ' Previous Lower restored.' : ''
+    toast(`${err.message || 'SWAP failed.'}${suffix}`, 'error', 5200)
+  } finally {
+    setBusy(key, false)
+    commandLocks.delete(key)
+  }
+}
+
 async function sendResource(id) {
   const resource=store.getState().config.resources.find((r)=>r.id===id); if(!resource || !client) return
   const key=resource.inputKey
@@ -192,7 +272,7 @@ const actions = {
   },
   exportConfig(){ downloadConfig(store.getState().config) },
   async importConfig(file){ try{const cfg=await readConfigFile(file);update((s)=>{s.config=cfg;persist(cfg);return s});toast('Configuration imported.','success')}catch(err){toast(err.message,'error',4500)} },
-  sendResource,
+  sendResource, swapResource,
 }
 
 let lastRenderFingerprint = ''
@@ -204,7 +284,7 @@ function renderFingerprint(state) {
     config: state.config,
     ui: { query: state.ui.query, filter: state.ui.filter, demo: state.ui.demo, busyInputKeys: state.ui.busyInputKeys, toast: state.ui.toast },
     vmix: vmix ? {
-      version: vmix.version, presetName: vmix.presetName, mainMix: vmix.mainMix, overlays: vmix.overlays,
+      version: vmix.version, presetName: vmix.presetName, mainMix: vmix.mainMix, overlays: vmix.overlays, additionalMixes: vmix.additionalMixes,
       inputs: vmix.inputs.map((input) => ({
         key: input.key, number: input.number, type: input.type, title: input.title, shortTitle: input.shortTitle,
         text: input.text, image: input.image, color: input.color, layers: input.layers,

@@ -5,6 +5,7 @@ import { createMockModel, modelToXml } from '../src/vmix/mock.js'
 const model = createMockModel()
 const port = Number(process.env.PORT || 8088)
 const cors = { 'Access-Control-Allow-Origin':'*', 'Access-Control-Allow-Methods':'GET,OPTIONS', 'Access-Control-Allow-Headers':'Content-Type', 'Cache-Control':'no-store' }
+const findInput = (ref) => model.inputs.find((x)=>x.key===ref||x.number===Number(ref)||x.shortTitle===ref||x.title===ref)
 
 const server = http.createServer((req,res)=>{
   if(req.method==='OPTIONS'){res.writeHead(204,cors);return res.end()}
@@ -13,7 +14,16 @@ const server = http.createServer((req,res)=>{
   try{
     const fn=url.searchParams.get('Function')
     if(fn){
-      const ref=url.searchParams.get('Input'); const input=model.inputs.find((x)=>x.key===ref||x.number===Number(ref)||x.shortTitle===ref||x.title===ref)
+      const overlayMatch=/^OverlayInput(\d+)(In|Out)$/.exec(fn)
+      if(overlayMatch){
+        const overlayNumber=Number(overlayMatch[1]); const direction=overlayMatch[2]
+        const overlay=model.overlays.find((x)=>x.number===overlayNumber)
+        if(!overlay) throw new Error('Overlay not found')
+        if(direction==='Out'){ overlay.inputNumber=0; overlay.preview=false }
+        else { const input=findInput(url.searchParams.get('Input')); if(!input) throw new Error('Input not found'); overlay.inputNumber=input.number; overlay.preview=false }
+        res.writeHead(200,{...cors,'Content-Type':'text/plain'});return res.end('OK')
+      }
+      const input=findInput(url.searchParams.get('Input'))
       if(!input) throw new Error('Input not found')
       if(fn==='PreviewInput') model.preview=input.number
       else if(fn==='SelectTitlePreset'){

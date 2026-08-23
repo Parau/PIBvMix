@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { normalizeTarget } from '../src/vmix/client.js'
-import { buildOnAirSet } from '../src/vmix/safety.js'
+import { buildOnAirSet, getTitleSwapContext } from '../src/vmix/safety.js'
 import { parseCsv, labelForRow } from '../src/config/csv.js'
 import { createMockModel, modelToXml, MockVmixClient } from '../src/vmix/mock.js'
 import { resolveTitleResource, verifyResourceFields } from '../src/vmix/resolver.js'
@@ -25,27 +25,47 @@ test('ON AIR graph includes program/active-overlay descendants, ignores preview-
   assert.deepEqual([...buildOnAirSet(state)].sort(),['a','b','c','x','y'])
 })
 
-test('mock XML represents active and preview-only overlays like vMix',()=>{
+test('SWAP context allows only one direct active overlay path',()=>{
+  const base={
+    mainMix:{programKey:'cam'}, inputKeyByNumber:{1:'cam',2:'lower',3:'mix'}, additionalMixes:[],
+    inputs:[{key:'cam',layers:[]},{key:'lower',layers:[]},{key:'mix',layers:[{key:'lower'}]}],
+    overlays:[{number:2,inputKey:'lower',preview:false}],
+  }
+  assert.deepEqual(getTitleSwapContext(base,'lower'),{eligible:true,overlayNumber:2,reason:'direct-single-overlay'})
+  const nested={...base,overlays:[{number:2,inputKey:'mix',preview:false}]}
+  assert.equal(getTitleSwapContext(nested,'lower').eligible,false)
+  const duplicate={...base,mainMix:{programKey:'lower'}}
+  assert.equal(getTitleSwapContext(duplicate,'lower').reason,'multiple-on-air-paths')
+  const extraMix={...base,additionalMixes:[{number:2,programNumber:2,previewNumber:1}]}
+  assert.equal(getTitleSwapContext(extraMix,'lower').eligible,false)
+})
+
+test('mock XML represents two active overlays like vMix',()=>{
   const model=createMockModel()
   const xml=modelToXml(model)
   assert.match(xml,/<overlay number="1">7<\/overlay>/)
-  assert.match(xml,/<overlay number="2" preview="True">5<\/overlay>/)
+  assert.match(xml,/<overlay number="2">5<\/overlay>/)
   const numberToKey=Object.fromEntries(model.inputs.map((x)=>[x.number,x.key]))
   const state={
-    mainMix:{programKey:numberToKey[model.active]},
-    inputs:model.inputs,
-    overlays:model.overlays.map((x)=>({inputKey:numberToKey[x.inputNumber],preview:x.preview})),
+    mainMix:{programKey:numberToKey[model.active]}, inputKeyByNumber:numberToKey, additionalMixes:[], inputs:model.inputs,
+    overlays:model.overlays.map((x)=>({number:x.number,inputKey:numberToKey[x.inputNumber]||null,preview:x.preview})),
   }
   const onAir=buildOnAirSet(state)
   assert.equal(onAir.has('lower-news'),true)
-  assert.equal(onAir.has('lower-people'),false)
+  assert.equal(onAir.has('lower-people'),true)
+  assert.equal(getTitleSwapContext(state,'lower-people').eligible,true)
+  assert.equal(getTitleSwapContext(state,'lower-news').eligible,false)
 })
 
-test('mock vMix commands update title and preview',async()=>{
+test('mock vMix commands update title, preview and overlay swap primitives',async()=>{
   const c=new MockVmixClient({latencyMs:0})
+  await c.command('OverlayInput2Out')
+  assert.equal(c.model.overlays.find((x)=>x.number===2).inputNumber,0)
   await c.command('SelectTitlePreset',{Input:'lower-people',Value:1})
   const input=c.model.inputs.find((x)=>x.key==='lower-people')
   assert.equal(input.text[0].value,'Maria Silva')
+  await c.command('OverlayInput2In',{Input:'lower-people'})
+  assert.equal(c.model.overlays.find((x)=>x.number===2).inputNumber,input.number)
   await c.command('PreviewInput',{Input:'lower-people',Mix:0})
   assert.equal(c.model.preview,input.number)
 })
