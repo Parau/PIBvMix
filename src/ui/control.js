@@ -1,8 +1,53 @@
 import { buildOnAirSet, getTitleSwapContext } from '../vmix/safety.js?v=0.3.0'
-import { resolveTitleResource } from '../vmix/resolver.js?v=0.2.0'
+import { effectiveVerification, isResourceFullyVerifiable, resolveTitleResource } from '../vmix/resolver.js?v=0.3.1'
 import { resourceIcon, icon } from './icons.js?v=0.2.0'
 
 const e = (s) => String(s ?? '').replace(/[&<>'"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))
+let lastTitleDiagnosticsFingerprint = ''
+
+function logTitleDiagnostics(vmix, titleGroups, titleResolution, titleSwapContext, onAir) {
+  if (!vmix) return
+  const diagnostics = [...titleGroups].map(([key, group]) => {
+    const input = vmix.inputByKey[key]
+    const resolution = titleResolution.get(key)
+    const swap = titleSwapContext.get(key)
+    return {
+      inputKey: key,
+      input: input?.shortTitle || input?.title || key,
+      program: vmix.mainMix?.programKey === key,
+      preview: vmix.mainMix?.previewKey === key,
+      onAir: onAir.has(key),
+      fields: {
+        text: Object.fromEntries((input?.text || []).map((field) => [field.name, field.value])),
+        image: Object.fromEntries((input?.image || []).map((field) => [field.name, field.value])),
+        color: Object.fromEntries((input?.color || []).map((field) => [field.name, field.value])),
+      },
+      resolution: {
+        status: resolution?.status || 'none',
+        currentId: resolution?.resource?.id || null,
+        currentLabel: resolution?.resource?.label || null,
+      },
+      swap: swap || { eligible: false, reason: 'missing-state' },
+      resources: group.map((resource) => ({
+        id: resource.id,
+        label: resource.label,
+        presetIndex: resource.presetIndex,
+        storedMode: resource.verification?.mode || null,
+        effectiveVerification: effectiveVerification(input, resource),
+        csvRow: resource.csvRow || [],
+      })),
+    }
+  })
+  const fingerprint = JSON.stringify(diagnostics)
+  if (fingerprint === lastTitleDiagnosticsFingerprint) return
+  lastTitleDiagnosticsFingerprint = fingerprint
+  console.info('[PIBvMix][title-state]', diagnostics)
+  for (const item of diagnostics) {
+    if ((item.preview || item.onAir) && item.resolution.status !== 'exact') {
+      console.warn('[PIBvMix][title-unresolved]', item)
+    }
+  }
+}
 
 export function renderControl(root, ctx) {
   const { state, actions } = ctx
@@ -17,6 +62,7 @@ export function renderControl(root, ctx) {
   }
   const titleResolution = new Map([...titleGroups].map(([key, group]) => [key, resolveTitleResource(vmix?.inputByKey[key], group)]))
   const titleSwapContext = new Map([...titleGroups].map(([key]) => [key, getTitleSwapContext(vmix, key)]))
+  logTitleDiagnostics(vmix, titleGroups, titleResolution, titleSwapContext, onAir)
   const q = state.ui.query.toLowerCase()
   const filter = state.ui.filter
   const visible = resources.filter((r) => {
@@ -52,7 +98,9 @@ function card(r, vmix, onAir, state, titleResolution, titleSwapContext) {
   const resolution = r.type === 'titlePreset' ? titleResolution.get(r.inputKey) : null
   const isCurrent = blocked && resolution?.status === 'exact' && resolution.resource?.id === r.id
   const swapContext = r.type === 'titlePreset' ? titleSwapContext.get(r.inputKey) : null
-  const canSwap = blocked && !offline && !busy && !isCurrent && swapContext?.eligible && resolution?.status === 'exact' && resolution.resource?.verification?.mode === 'verifiedFields' && resolution.resource?.verification?.fieldNames?.length && r.verification?.mode === 'verifiedFields' && r.verification?.fieldNames?.length
+  const currentVerifiable = resolution?.resource ? isResourceFullyVerifiable(input, resolution.resource) : false
+  const targetVerifiable = r.type === 'titlePreset' ? isResourceFullyVerifiable(input, r) : false
+  const canSwap = blocked && !offline && !busy && !isCurrent && swapContext?.eligible && resolution?.status === 'exact' && currentVerifiable && targetVerifiable
   let status = 'READY', cls = 'ready'
   if (missing) { status = 'UNAVAILABLE'; cls = 'unavailable' }
   else if (offline) { status = 'OFFLINE'; cls = 'unavailable' }
