@@ -4,7 +4,7 @@ import { normalizeTarget } from '../src/vmix/client.js'
 import { buildOnAirSet, getTitleSwapContext } from '../src/vmix/safety.js'
 import { parseCsv, labelForRow } from '../src/config/csv.js'
 import { createMockModel, modelToXml, MockVmixClient } from '../src/vmix/mock.js'
-import { resolveTitleResource, verifyResourceFields } from '../src/vmix/resolver.js'
+import { effectiveVerification, isResourceFullyVerifiable, resolveTitleResource, verifyResourceFields } from '../src/vmix/resolver.js'
 
 test('normalizes vMix addresses',()=>{
   assert.equal(normalizeTarget('192.168.1.50'),'http://192.168.1.50:8088')
@@ -85,6 +85,32 @@ test('title resolver reports ambiguity instead of guessing between identical pre
     {id:'b',type:'titlePreset',inputKey:'lower',csvRow:['Same Name','@same'],verification:{fieldNames:['Name.Text','Instagram.Text']}},
   ]
   assert.equal(resolveTitleResource(input,resources).status,'ambiguous')
+})
+
+test('indexOnly title becomes fully verifiable by appending exposed image field without changing text mapping order',()=>{
+  const input={key:'lower',text:[{name:'TextBlock1.Text',value:'Cargo 01'},{name:'TextBlock2.Text',value:'Nome 01'}],image:[{name:'Image1.Source',value:'img.jpg'}],color:[]}
+  const resource={id:'r',type:'titlePreset',inputKey:'lower',csvRow:['Nome 01','Cargo 01','img.jpg'],verification:{mode:'indexOnly',fieldNames:['TextBlock2.Text','TextBlock1.Text']}}
+  assert.deepEqual(effectiveVerification(input,resource),{mode:'verifiedFields',fieldNames:['TextBlock2.Text','TextBlock1.Text','Image1.Source']})
+  assert.equal(isResourceFullyVerifiable(input,resource),true)
+  assert.equal(verifyResourceFields(input,resource),true)
+  assert.equal(resolveTitleResource(input,[resource]).status,'exact')
+})
+
+test('effective verification can include color and refuses unresolved extra CSV columns',()=>{
+  const input={key:'lower',text:[{name:'Name.Text',value:'Ana'}],image:[{name:'Photo.Source',value:'ana.jpg'}],color:[{name:'Accent.Color',value:'#fff'}]}
+  const ok={id:'ok',type:'titlePreset',inputKey:'lower',csvRow:['Ana','ana.jpg','#fff'],verification:{mode:'indexOnly',fieldNames:['Name.Text']}}
+  const incomplete={id:'bad',type:'titlePreset',inputKey:'lower',csvRow:['Ana','ana.jpg','#fff','extra'],verification:{mode:'indexOnly',fieldNames:['Name.Text']}}
+  assert.deepEqual(effectiveVerification(input,ok).fieldNames,['Name.Text','Photo.Source','Accent.Color'])
+  assert.equal(verifyResourceFields(input,ok),true)
+  assert.equal(isResourceFullyVerifiable(input,incomplete),false)
+  assert.equal(resolveTitleResource(input,[incomplete]).status,'unknown')
+})
+
+test('stale text remains unresolved even when image matches',()=>{
+  const input={key:'lower',text:[{name:'Role.Text',value:'Cargo 01'},{name:'Name.Text',value:'Nome 01a'}],image:[{name:'Photo.Source',value:'same.jpg'}],color:[]}
+  const resource={id:'r',type:'titlePreset',inputKey:'lower',csvRow:['Nome 01','Cargo 01','same.jpg'],verification:{mode:'indexOnly',fieldNames:['Name.Text','Role.Text']}}
+  assert.equal(verifyResourceFields(input,resource),false)
+  assert.equal(resolveTitleResource(input,[resource]).status,'unknown')
 })
 
 test('mock fixture has representative inputs',()=>{ const m=createMockModel(); assert.ok(m.inputs.some((x)=>x.type==='GT')); assert.ok(m.inputs.some((x)=>x.layers.length)); assert.ok(m.overlays.length) })
