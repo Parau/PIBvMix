@@ -1,0 +1,14 @@
+<!doctype html><meta charset="utf-8"><title>PIBvMix Configure Field Mapping</title><div id="app"></div>
+<script type="module">
+import { renderConfigure } from '../src/ui/configure.js'
+window.saved=null
+const input={key:'lower',number:5,type:'GT',title:'Lower.gtzip',shortTitle:'Lower',layers:[],text:[{index:0,name:'TextBlock1.Text',value:'Cargo 01'},{index:1,name:'TextBlock2.Text',value:'Nome 01'}],image:[{index:0,name:'Image1.Source',value:'img.jpg'}],color:[]}
+const existing=[
+ {id:'a',type:'titlePreset',label:'Nome 01',inputKey:'lower',presetIndex:0,csvRow:['Nome 01','Cargo 01','img.jpg'],verification:{mode:'indexOnly',fieldNames:['TextBlock2.Text','TextBlock1.Text']}},
+ {id:'b',type:'titlePreset',label:'Nome 02',inputKey:'lower',presetIndex:1,csvRow:['Nome 02','Cargo 02','img.jpg'],verification:{mode:'indexOnly',fieldNames:['TextBlock2.Text','TextBlock1.Text']}},
+]
+const state={connection:{status:'connected',message:''},ui:{demo:false,query:'',filter:'all'},config:{vmix:{target:''},resources:existing,titleSources:[{inputKey:'lower',csv:{fileName:'names.csv',rowCount:2},presets:existing.map(r=>({presetIndex:r.presetIndex,csvRow:r.csvRow,label:r.label,verification:r.verification,resourceId:r.id}))}]},vmixState:{inputs:[input],inputByKey:{lower:input},presetName:'Test'}}
+const no=()=>{}
+const actions={connect:no,toggleDemo:no,refresh:no,toControl:no,exportConfig:no,importConfig:no,setQuery:no,setFilter:no,toggleInput:no,removeResource:no,moveResource:no,renameResource:no,reorderByIds:no,replaceTitleResources(inputKey,resources,metadata,catalog){window.saved={inputKey,resources,metadata,catalog}}}
+renderConfigure(document.querySelector('#app'),{state,actions})
+</script>
