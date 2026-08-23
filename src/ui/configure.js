@@ -1,5 +1,6 @@
 import { isTitleCandidate } from '../vmix/safety.js'
 import { parseCsv, labelForRow, sha256 } from '../config/csv.js'
+import { extendVerificationFieldNames } from '../vmix/resolver.js?v=0.3.1'
 import { resourceIcon, icon } from './icons.js'
 
 const e = (s) => String(s ?? '').replace(/[&<>'"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))
@@ -111,23 +112,18 @@ function bindDrag(list, apply) {
   })
 }
 
-function fieldNamesFor(input, catalog) {
-  const detected = (input.text || []).map((field) => field.name).filter(Boolean)
-  const catalogNames = catalog.find((p) => p.verification?.fieldNames?.length)?.verification.fieldNames || []
-  return detected.length ? detected : catalogNames
+function catalogFieldNames(catalog) {
+  return catalog.find((p) => p.verification?.fieldNames?.length)?.verification.fieldNames || []
+}
+
+function fieldNamesFor(input, catalog, maxColumns = Infinity) {
+  return extendVerificationFieldNames(input, catalogFieldNames(catalog), maxColumns)
 }
 
 function renderFieldMapping(fieldNames, maxColumns) {
   if (!maxColumns) return ''
   const labels = Array.from({ length: maxColumns }, (_, i) => fieldNames[i] || `CSV column ${i + 1}`)
   return `<div class="csv-summary"><strong>Fields detected from vMix</strong><span>${labels.map((name, i) => `${i + 1}. ${e(name)} ← CSV ${i + 1}`).join(' · ')}</span></div>`
-}
-
-function renderPresetValues(p, fieldNames) {
-  const row = p.csvRow || []
-  if (!row.length) return `Preset ${p.presetIndex}`
-  const names = p.verification?.fieldNames?.length ? p.verification.fieldNames : fieldNames
-  return row.map((value, i) => `${e(names[i] || `CSV column ${i + 1}`)}: ${e(value)}`).join(' · ')
 }
 
 async function showCsvDialog(host, input, ctx) {
@@ -140,7 +136,7 @@ async function showCsvDialog(host, input, ctx) {
     ? source.presets.map((p) => ({ ...p, selected: existingByIndex.has(p.presetIndex), resourceId: existingByIndex.get(p.presetIndex)?.id || p.resourceId || null, label: existingByIndex.get(p.presetIndex)?.label || p.label }))
     : existingResources.map((r) => ({ presetIndex: r.presetIndex, csvRow: r.csvRow || [], label: r.label, verification: r.verification || { mode: 'indexOnly', fieldNames: [] }, selected: true, resourceId: r.id }))
 
-  host.innerHTML = `<div class="modal-backdrop"><div class="modal"><button class="modal-close">×</button><p class="eyebrow">TITLE PRESETS</p><h2>${e(input.shortTitle || input.title)}</h2><p>vMix provides the field names for this Lower. The CSV provides each preset's values in the same order. Choose which presets appear in Control and give each button a short name.</p><div id="preset-manager"></div><details class="preset-import" ${catalog.length ? '' : 'open'}><summary>${catalog.length ? 'Import / re-sync CSV' : 'Import Title Preset CSV'}</summary><label class="drop-file"><span>${icon('upload')}</span><strong>Choose Title Preset CSV</strong><small>The file is read locally and never uploaded.</small><input type="file" accept=".csv,text/csv" hidden></label></details><div id="csv-error"></div></div></div>`
+  host.innerHTML = `<div class="modal-backdrop"><div class="modal"><button class="modal-close">×</button><p class="eyebrow">TITLE PRESETS</p><h2>${e(input.shortTitle || input.title)}</h2><p>vMix provides the editable field names for this Lower. The CSV provides each preset's values in the same order. Text, image and color fields are included when vMix exposes them.</p><div id="preset-manager"></div><details class="preset-import" ${catalog.length ? '' : 'open'}><summary>${catalog.length ? 'Import / re-sync CSV' : 'Import Title Preset CSV'}</summary><label class="drop-file"><span>${icon('upload')}</span><strong>Choose Title Preset CSV</strong><small>The file is read locally and never uploaded.</small><input type="file" accept=".csv,text/csv" hidden></label></details><div id="csv-error"></div></div></div>`
 
   host.querySelector('.modal-close').onclick = () => host.innerHTML = ''
   const dropFile = host.querySelector('.drop-file')
@@ -149,22 +145,27 @@ async function showCsvDialog(host, input, ctx) {
   const renderCatalog = () => {
     const manager = host.querySelector('#preset-manager')
     if (!catalog.length) {
-      const detected = (input.text || []).map((field) => field.name).filter(Boolean)
+      const detected = fieldNamesFor(input, [], Infinity)
       manager.innerHTML = `${detected.length ? renderFieldMapping(detected, detected.length) : ''}<div class="empty"><strong>No presets imported yet</strong><span>Choose the CSV exported from this vMix Title to load the people/titles.</span></div>`
       return
     }
 
-    const fieldNames = fieldNamesFor(input, catalog)
     const maxColumns = Math.max(0, ...catalog.map((p) => (p.csvRow || []).length))
-    manager.innerHTML = `${renderFieldMapping(fieldNames, maxColumns)}<div class="csv-summary"><strong>${catalog.length} presets available</strong><span>${e(metadata?.fileName || 'Current configuration')}</span></div><div class="csv-rows">${catalog.map((p, i) => `<div class="csv-row preset-edit-row"><input type="checkbox" data-preset-selected="${i}" ${p.selected ? 'checked' : ''}><span class="preset-index">${p.presetIndex}</span><div class="preset-edit-copy"><small>${renderPresetValues(p, fieldNames)}</small><label><small>Control button name</small><input class="preset-name-input" data-preset-label="${i}" value="${e(p.label || labelForRow(p.csvRow || [], p.presetIndex))}" aria-label="Control button name for preset ${p.presetIndex}"></label></div></div>`).join('')}</div><div class="modal-actions"><button class="btn ghost" id="select-all">Select all</button><button class="btn ghost" id="select-none">Select none</button><button class="btn primary" id="apply-presets">Save presets</button></div>`
+    const fieldNames = fieldNamesFor(input, catalog, maxColumns)
+    manager.innerHTML = `${renderFieldMapping(fieldNames, maxColumns)}<div class="csv-summary"><strong>${catalog.length} presets available</strong><span>${e(metadata?.fileName || 'Current configuration')}</span></div><div class="csv-rows">${catalog.map((p, i) => `<div class="csv-row preset-edit-row"><input type="checkbox" data-preset-selected="${i}" ${p.selected ? 'checked' : ''}><span class="preset-index">${p.presetIndex}</span><div class="preset-edit-copy"><small>${(p.csvRow || []).map((value, col) => `${e(fieldNames[col] || `CSV column ${col + 1}`)}: ${e(value)}`).join(' · ')}</small><label><small>Control button name</small><input class="preset-name-input" data-preset-label="${i}" value="${e(p.label || labelForRow(p.csvRow || [], p.presetIndex))}" aria-label="Control button name for preset ${p.presetIndex}"></label></div></div>`).join('')}</div><div class="modal-actions"><button class="btn ghost" id="select-all">Select all</button><button class="btn ghost" id="select-none">Select none</button><button class="btn primary" id="apply-presets">Save presets</button></div>`
 
     manager.querySelector('#select-all').onclick = () => manager.querySelectorAll('[data-preset-selected]').forEach((x) => x.checked = true)
     manager.querySelector('#select-none').onclick = () => manager.querySelectorAll('[data-preset-selected]').forEach((x) => x.checked = false)
     manager.querySelector('#apply-presets').onclick = () => {
+      const finalFieldNames = fieldNamesFor(input, catalog, maxColumns)
       const updatedCatalog = catalog.map((p, i) => ({
         ...p,
         selected: manager.querySelector(`[data-preset-selected="${i}"]`).checked,
         label: manager.querySelector(`[data-preset-label="${i}"]`).value.trim() || labelForRow(p.csvRow || [], p.presetIndex),
+        verification: {
+          mode: finalFieldNames.length >= (p.csvRow || []).length && (p.csvRow || []).length ? 'verifiedFields' : 'indexOnly',
+          fieldNames: finalFieldNames.slice(0, (p.csvRow || []).length),
+        },
       }))
       const resources = updatedCatalog.filter((p) => p.selected).map((p) => ({
         id: p.resourceId || id(),
@@ -193,7 +194,7 @@ async function showCsvDialog(host, input, ctx) {
       const rows = parseCsv(raw)
       if (!rows.length) throw new Error('CSV contains no preset rows.')
       const maxColumns = Math.max(...rows.map((r) => r.length))
-      const fieldNames = input.text?.slice(0, maxColumns).map((x) => x.name).filter(Boolean) || []
+      const fieldNames = fieldNamesFor(input, catalog, maxColumns)
       const previousByIndex = new Map(catalog.map((p) => [p.presetIndex, p]))
       catalog = rows.map((row, presetIndex) => {
         const previous = previousByIndex.get(presetIndex)
