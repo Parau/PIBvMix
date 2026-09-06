@@ -4,11 +4,11 @@ import { MockVmixClient } from './vmix/mock.js?v=0.3.2'
 import { parseVmixXml } from './vmix/parser.js?v=0.2.0'
 import { VmixPoller } from './vmix/poller.js?v=0.2.0'
 import { buildOnAirSet, getTitleSwapContext } from './vmix/safety.js?v=0.3.2'
-import { isResourceFullyVerifiable, resolveTitleResource, verifyResourceFields } from './vmix/resolver.js?v=0.3.1'
+import { isResourceFullyVerifiable, resolveTitleResource, sameTitlePreset, verifyResourceFields } from './vmix/resolver.js?v=0.3.3'
 import { loadConfig, saveConfig } from './config/storage.js?v=0.2.0'
 import { downloadConfig, readConfigFile } from './config/backup.js?v=0.2.0'
-import { renderConfigure } from './ui/configure.js?v=0.3.2'
-import { renderControl } from './ui/control.js?v=0.3.2'
+import { renderConfigure } from './ui/configure.js?v=0.3.3'
+import { renderControl } from './ui/control.js?v=0.3.3'
 
 const saved = loadConfig()
 const store = createStore({ ...initialState, config: saved || initialState.config })
@@ -102,7 +102,7 @@ function seedDemoResources() {
     ['Maria Silva',1,['Maria Silva','@mariasilva']],
     ['David Lee',2,['David Lee','@davidlee']],
     ['Ana Costa',3,['Ana Costa','@anacosta']],
-  ].map(([label,presetIndex,csvRow]) => ({ label, presetIndex, csvRow, verification:{mode:'verifiedFields',fieldNames:['Name.Text','Instagram.Text']}, selected:true, resourceId:newId() }))
+  ].map(([label,presetIndex,csvRow]) => ({ label, presetIndex, csvRow, verification:{mode:'verifiedFields',fieldNames:['Name.Text','Instagram.Text']}, selected:true, quantity:1, resourceId:newId() }))
   const resources = peopleCatalog.map((p) => ({ id:p.resourceId, type:'titlePreset', label:p.label, inputKey:'lower-people', presetIndex:p.presetIndex, csvRow:p.csvRow, verification:p.verification }))
   for (const key of ['video-1','image-1','cam-1','cam-2','cam-wide','video-2','image-2']) {
     const input=by[key]; resources.push({id:newId(),type:'input',label:input.shortTitle||input.title,inputKey:key})
@@ -210,7 +210,7 @@ async function swapResource(id) {
     logCommand('SWAP current resolution', { inputKey:key, status:resolution.status, current:resolution.resource?.label || null })
     if (resolution.status !== 'exact' || !resolution.resource) throw new Error('The current Lower preset cannot be identified safely.')
     originalResource = resolution.resource
-    if (originalResource.id === resource.id) return toast(`${resource.label} is already CURRENT.`, 'info')
+    if (sameTitlePreset(originalResource, resource)) return toast(`${resource.label} is already CURRENT.`, 'info')
     if (!isResourceFullyVerifiable(input, originalResource) || !isResourceFullyVerifiable(input, resource)) {
       throw new Error('SWAP requires all Title fields for both current and target presets to be verifiable.')
     }
@@ -339,11 +339,14 @@ const actions = {
           csvRow:p.csvRow || [],
           label:p.label,
           verification:p.verification || {mode:'indexOnly',fieldNames:[]},
-          resourceId:p.resourceId || null,
+          quantity:Number.isFinite(Number(p.quantity)) ? Number(p.quantity) : (p.selected ? 1 : 0),
+          selected:Number.isFinite(Number(p.quantity)) ? Number(p.quantity) > 0 : Boolean(p.selected),
+          resourceIds:p.resourceIds || (p.resourceId ? [p.resourceId] : []),
+          resourceId:p.resourceId || p.resourceIds?.[0] || null,
         })),
       })
     })
-    toast(`${newResources.length} Title presets selected.`, 'success')
+    toast(`${newResources.length} Title occurrence${newResources.length === 1 ? '' : 's'} saved.`, 'success')
   },
   exportConfig(){ downloadConfig(store.getState().config) },
   async importConfig(file){ try{const cfg=await readConfigFile(file);update((s)=>{s.config=cfg;persist(cfg);return s});toast('Configuration imported.','success')}catch(err){toast(err.message,'error',4500)} },
