@@ -7,7 +7,7 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
 try {
   await page.goto('http://127.0.0.1:4173/?demo=1', { waitUntil: 'networkidle' })
   await page.waitForSelector('.connection-chip.connected')
-  assert.equal(await page.locator('.brand-version').textContent(), 'v0.3.4')
+  assert.equal(await page.locator('.brand-version').textContent(), 'v0.3.5')
 
   const videoItem = page.locator('.input-item').filter({ hasText: 'Opening Video' }).first()
   await videoItem.waitFor()
