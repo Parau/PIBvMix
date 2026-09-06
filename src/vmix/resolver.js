@@ -12,6 +12,16 @@ export function titleFieldNames(input) {
   return titleFieldEntries(input).map((field) => field.name)
 }
 
+export function titlePresetIdentity(resource) {
+  if (!resource || resource.type !== 'titlePreset' || !resource.inputKey || resource.presetIndex === undefined || resource.presetIndex === null) return null
+  return `${resource.inputKey}::${Number(resource.presetIndex)}`
+}
+
+export function sameTitlePreset(a, b) {
+  const left = titlePresetIdentity(a)
+  return Boolean(left && left === titlePresetIdentity(b))
+}
+
 export function extendVerificationFieldNames(input, preferredNames = [], maxColumns = Infinity) {
   const detected = titleFieldNames(input)
   const detectedSet = new Set(detected)
@@ -43,11 +53,34 @@ function currentFieldMap(input) {
   return new Map(titleFieldEntries(input).map((field) => [field.name, norm(field.value)]))
 }
 
+function logicalCandidates(input, resources) {
+  const groups = new Map()
+  for (const resource of resources) {
+    if (resource.type !== 'titlePreset' || resource.inputKey !== input.key) continue
+    const identity = titlePresetIdentity(resource)
+    if (!identity) continue
+    if (!groups.has(identity)) groups.set(identity, [])
+    groups.get(identity).push(resource)
+  }
+
+  const candidates = []
+  for (const group of groups.values()) {
+    const signatures = new Set(group.map((resource) => JSON.stringify({
+      csvRow: resource.csvRow || [],
+      verification: effectiveVerification(input, resource),
+    })))
+    if (signatures.size > 1) return { conflict: true, candidates: [] }
+    candidates.push(group[0])
+  }
+  return { conflict: false, candidates }
+}
+
 export function resolveTitleResource(input, resources) {
   if (!input) return { status: 'none', resource: null }
   const current = currentFieldMap(input)
-  const candidates = resources.filter((r) => r.type === 'titlePreset' && r.inputKey === input.key)
-  const matches = candidates.filter((resource) => {
+  const logical = logicalCandidates(input, resources)
+  if (logical.conflict) return { status: 'ambiguous', resource: null }
+  const matches = logical.candidates.filter((resource) => {
     const verification = effectiveVerification(input, resource)
     if (verification.mode !== 'verifiedFields') return false
     return verification.fieldNames.every((name, i) => current.get(name) === norm(resource.csvRow?.[i]))
