@@ -3,5 +3,5 @@
   "version":"0.3.5",
   "private":true,
   "type":"module",
-  "scripts":{"test":"node --test tests/core.test.mjs tests/emulator.test.mjs tests/optical.test.mjs","emulator":"node emulator/server.mjs","serve":"python -m http.server 4173"}
+  "scripts":{"test":"node --test --test-concurrency=1 tests/core.test.mjs tests/emulator.test.mjs tests/optical.test.mjs","emulator":"node emulator/server.mjs","serve":"python -m http.server 4173"}
 }
