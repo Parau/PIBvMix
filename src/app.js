@@ -7,8 +7,8 @@ import { buildOnAirSet, getTitleSwapContext } from './vmix/safety.js?v=0.3.2'
 import { isResourceFullyVerifiable, resolveTitleResource, sameTitlePreset, verifyResourceFields } from './vmix/resolver.js?v=0.3.3'
 import { loadConfig, saveConfig } from './config/storage.js?v=0.2.0'
 import { downloadConfig, readConfigFile } from './config/backup.js?v=0.2.0'
-import { renderConfigure } from './ui/configure.js?v=0.3.3'
-import { renderControl } from './ui/control.js?v=0.3.3'
+import { renderConfigure } from './ui/configure.js?v=0.3.4'
+import { renderControl } from './ui/control.js?v=0.3.4'
 
 const saved = loadConfig()
 const store = createStore({ ...initialState, config: saved || initialState.config })
@@ -20,6 +20,11 @@ const commandLocks = new Map()
 const root = document.querySelector('#app')
 const newId = () => crypto.randomUUID?.() || `r-${Date.now()}-${Math.random().toString(16).slice(2)}`
 const SWAP_TRANSITION_TIMEOUT_MS = 5000
+const MAX_RESOURCE_OCCURRENCES = 10
+const clampQuantity = (value) => {
+  const n = Number.parseInt(value, 10)
+  return Number.isFinite(n) ? Math.max(0, Math.min(MAX_RESOURCE_OCCURRENCES, n)) : 0
+}
 
 function logCommand(event, details = {}) { console.info(`[PIBvMix][command] ${event}`, details) }
 function update(fn) { store.setState((s) => fn(structuredClone(s))) }
@@ -312,14 +317,32 @@ async function sendResource(id) {
   finally { setBusy(key,false); commandLocks.delete(key) }
 }
 
+function setInputQuantity(key, value) {
+  const quantity = clampQuantity(value)
+  commitConfig((cfg) => {
+    const existing = cfg.resources.filter((r) => r.type === 'input' && r.inputKey === key)
+    if (quantity < existing.length) {
+      const removeIds = new Set(existing.slice(quantity).map((r) => r.id))
+      cfg.resources = cfg.resources.filter((r) => !removeIds.has(r.id))
+      return
+    }
+    if (quantity <= existing.length) return
+    const input = store.getState().vmixState?.inputByKey[key]
+    if (!input) return
+    const baseLabel = existing[0]?.label || input.shortTitle || input.title || key
+    for (let i = existing.length; i < quantity; i++) {
+      cfg.resources.push({ id:newId(), type:'input', label:baseLabel, inputKey:key })
+    }
+  })
+}
+
 const actions = {
   connect, toggleDemo, refresh,
   toControl(){ update((s)=>{s.mode='control';s.ui.query='';s.ui.filter='all';return s}); if(poller){poller.interval=500} },
   toConfigure(){ update((s)=>{s.mode='configure';s.ui.query='';s.ui.filter='all';return s}); if(poller){poller.interval=1100} },
   setQuery(value){ update((s)=>{s.ui.query=value;return s}) }, setFilter(value){ update((s)=>{s.ui.filter=value;return s}) },
-  toggleInput(key,checked){
-    commitConfig((cfg)=>{ const idx=cfg.resources.findIndex((r)=>r.type==='input'&&r.inputKey===key); if(checked&&idx<0){ const input=store.getState().vmixState.inputByKey[key]; cfg.resources.push({id:newId(),type:'input',label:input.shortTitle||input.title,inputKey:key}) } else if(!checked&&idx>=0) cfg.resources.splice(idx,1) })
-  },
+  setInputQuantity,
+  toggleInput(key,checked){ setInputQuantity(key, checked ? 1 : 0) },
   removeResource(id){ commitConfig((cfg)=>{cfg.resources=cfg.resources.filter((r)=>r.id!==id)}) },
   renameResource(id,label){ commitConfig((cfg)=>{const r=cfg.resources.find((x)=>x.id===id);if(r)r.label=label.trim()||r.label}) },
   moveResource(id,delta){ commitConfig((cfg)=>{const i=cfg.resources.findIndex((r)=>r.id===id);const j=Math.max(0,Math.min(cfg.resources.length-1,i+delta));if(i>=0&&i!==j){const [r]=cfg.resources.splice(i,1);cfg.resources.splice(j,0,r)}}) },
