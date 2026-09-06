@@ -6,17 +6,21 @@ import { resourceIcon, icon } from './icons.js'
 const e = (s) => String(s ?? '').replace(/[&<>'"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))
 const appVersion = document.querySelector('meta[name="pibvmix-version"]')?.content || ''
 const id = () => crypto.randomUUID?.() || `r-${Date.now()}-${Math.random()}`
-const MAX_PRESET_OCCURRENCES = 10
+const MAX_RESOURCE_OCCURRENCES = 10
 const clampQuantity = (value) => {
   const n = Number.parseInt(value, 10)
-  return Number.isFinite(n) ? Math.max(0, Math.min(MAX_PRESET_OCCURRENCES, n)) : 0
+  return Number.isFinite(n) ? Math.max(0, Math.min(MAX_RESOURCE_OCCURRENCES, n)) : 0
+}
+
+function quantityStepper({ value, key, kind = 'input', label = 'resource' }) {
+  const attr = kind === 'preset' ? 'preset' : 'input'
+  return `<div class="quantity-stepper" aria-label="Occurrences for ${e(label)}"><button type="button" data-${attr}-quantity-dec="${e(key)}" aria-label="Decrease occurrences">−</button><input type="number" min="0" max="${MAX_RESOURCE_OCCURRENCES}" step="1" inputmode="numeric" value="${clampQuantity(value)}" data-${attr}-quantity="${e(key)}" aria-label="Number of occurrences for ${e(label)}"><button type="button" data-${attr}-quantity-inc="${e(key)}" aria-label="Increase occurrences">+</button></div>`
 }
 
 export function renderConfigure(root, ctx) {
   const { state, actions } = ctx
   const vmix = state.vmixState
   const resources = state.config.resources
-  const selectedKeys = new Set(resources.filter((r) => r.type === 'input').map((r) => r.inputKey))
   const query = state.ui.query.toLowerCase()
   const filter = state.ui.filter
   const inputs = (vmix?.inputs || []).filter((input) => {
@@ -40,7 +44,7 @@ export function renderConfigure(root, ctx) {
   </header>
   <main class="configure-layout">
     <section class="hero-strip">
-      <div><p class="eyebrow">RESOURCE SETUP</p><h1>Build your live resource palette</h1><p>Choose vMix inputs and turn each Lower preset into a fast, independent resource.</p></div>
+      <div><p class="eyebrow">RESOURCE SETUP</p><h1>Build your live resource palette</h1><p>Choose how many times each resource should appear, then arrange the exact presentation order.</p></div>
       <div class="connection-box">
         <label>vMix address</label><div class="input-row"><input id="vmix-target" value="${e(state.config.vmix.target || '')}" placeholder="192.168.1.50:8088"><button class="btn primary" data-action="connect">${state.connection.status === 'connecting' ? 'Connecting…' : 'Connect'}</button></div>
         <div class="connection-actions"><button class="link-btn" data-action="demo">${state.ui.demo ? 'Leave Demo mode' : 'Use Demo mode'}</button><button class="link-btn" data-action="refresh">Refresh inputs</button></div>
@@ -57,12 +61,14 @@ export function renderConfigure(root, ctx) {
         <div class="input-list">
           ${!vmix ? `<div class="empty"><strong>Connect or start Demo mode</strong><span>PIBvMix will read the resources from the production currently open in vMix.</span></div>` : inputs.map((input) => {
             const title = isTitleCandidate(input)
+            const normalOccurrences = resources.filter((r) => r.type === 'input' && r.inputKey === input.key).length
             const hasResources = resources.some((r) => r.inputKey === input.key)
             const hasPresetCatalog = title && state.config.titleSources.some((s) => s.inputKey === input.key)
             const configured = hasResources || hasPresetCatalog
+            const inputLabel = input.shortTitle || input.title || `Input ${input.number}`
             return `<article class="input-item ${configured?'selected':''}">
-              <div class="type-icon">${resourceIcon(input.type)}</div><div class="input-copy"><strong>${e(input.shortTitle || input.title)}</strong><span>#${input.number} · ${e(input.type)}${title ? ' · Title/Lower' : ''}</span></div>
-              ${title ? `<button class="btn mini ${configured?'accent':''}" data-import-title="${e(input.key)}">${configured ? 'Presets' : 'Import CSV'}</button>` : `<label class="select-box"><input type="checkbox" data-select-input="${e(input.key)}" ${selectedKeys.has(input.key)?'checked':''}><span></span></label>`}
+              <div class="type-icon">${resourceIcon(input.type)}</div><div class="input-copy"><strong>${e(inputLabel)}</strong><span>#${input.number} · ${e(input.type)}${title ? ' · Title/Lower' : ''}</span></div>
+              ${title ? `<button class="btn mini ${configured?'accent':''}" data-import-title="${e(input.key)}">${configured ? 'Presets' : 'Import CSV'}</button>` : quantityStepper({ value: normalOccurrences, key: input.key, label: inputLabel })}
             </article>`
           }).join('')}
           ${filter === 'unavailable' && unavailable.length ? unavailable.map((r)=>`<article class="input-item unavailable"><div class="type-icon">!</div><div class="input-copy"><strong>${e(r.label)}</strong><span>Missing GUID ${e(r.inputKey)}</span></div></article>`).join('') : ''}
@@ -79,7 +85,7 @@ export function renderConfigure(root, ctx) {
               <div class="selected-copy"><input value="${e(r.label)}" data-rename="${e(r.id)}"><span>${r.type === 'titlePreset' ? `${e(input?.shortTitle || 'Title')} · Preset ${r.presetIndex}` : e(input?.shortTitle || input?.title || 'Unavailable input')}${missing?' · UNAVAILABLE':''}</span></div>
               <div class="move-actions"><button title="Move up" data-move-up="${e(r.id)}">${icon('up')}</button><button title="Move down" data-move-down="${e(r.id)}">${icon('down')}</button><button title="Remove" data-remove="${e(r.id)}">${icon('close')}</button></div>
             </article>`
-          }).join('') : `<div class="empty"><strong>Your Control palette is empty</strong><span>Select normal inputs or import a Title Preset CSV.</span></div>`}
+          }).join('') : `<div class="empty"><strong>Your Control palette is empty</strong><span>Set a quantity for normal inputs or import Title Preset CSV files.</span></div>`}
         </div>
         <div class="panel-footer"><div class="backup-actions"><button class="btn ghost" data-action="export">${icon('download')} Export</button><label class="btn ghost file-label">${icon('upload')} Import<input type="file" id="config-import" accept="application/json" hidden></label></div><button class="btn primary large" data-action="control" ${resources.length?'':'disabled'}>Go to Control →</button></div>
       </div>
@@ -99,8 +105,20 @@ function bindConfigure(root, ctx) {
   root.querySelector('#config-import')?.addEventListener('change', (ev) => ev.target.files[0] && actions.importConfig(ev.target.files[0]))
   root.querySelector('#resource-search')?.addEventListener('input', (ev) => actions.setQuery(ev.target.value))
   root.querySelectorAll('[data-filter]').forEach((x) => x.addEventListener('click', () => actions.setFilter(x.dataset.filter)))
-  root.querySelectorAll('[data-select-input]').forEach((x) => x.addEventListener('change', () => actions.toggleInput(x.dataset.selectInput, x.checked)))
   root.querySelectorAll('[data-import-title]').forEach((x) => x.addEventListener('click', () => showCsvDialog(root.querySelector('#modal-root'), state.vmixState.inputByKey[x.dataset.importTitle], ctx)))
+
+  const inputQuantityField = (key) => root.querySelector(`[data-input-quantity="${CSS.escape(key)}"]`)
+  const applyInputQuantity = (key, value) => actions.setInputQuantity(key, clampQuantity(value))
+  root.querySelectorAll('[data-input-quantity-dec]').forEach((button) => button.addEventListener('click', () => {
+    const key = button.dataset.inputQuantityDec; const field = inputQuantityField(key)
+    applyInputQuantity(key, Number(field?.value || 0) - 1)
+  }))
+  root.querySelectorAll('[data-input-quantity-inc]').forEach((button) => button.addEventListener('click', () => {
+    const key = button.dataset.inputQuantityInc; const field = inputQuantityField(key)
+    applyInputQuantity(key, Number(field?.value || 0) + 1)
+  }))
+  root.querySelectorAll('[data-input-quantity]').forEach((field) => field.addEventListener('change', () => applyInputQuantity(field.dataset.inputQuantity, field.value)))
+
   root.querySelectorAll('[data-remove]').forEach((x) => x.addEventListener('click', () => actions.removeResource(x.dataset.remove)))
   root.querySelectorAll('[data-move-up]').forEach((x) => x.addEventListener('click', () => actions.moveResource(x.dataset.moveUp, -1)))
   root.querySelectorAll('[data-move-down]').forEach((x) => x.addEventListener('click', () => actions.moveResource(x.dataset.moveDown, 1)))
@@ -173,7 +191,7 @@ async function showCsvDialog(host, input, ctx) {
         }
       })
 
-  host.innerHTML = `<div class="modal-backdrop"><div class="modal"><button class="modal-close">×</button><p class="eyebrow">TITLE PRESETS</p><h2>${e(input.shortTitle || input.title)}</h2><p>Choose how many times each preset should appear in the presentation list. Use 0 to hide it, or repeat it up to ${MAX_PRESET_OCCURRENCES} times.</p><div id="preset-manager"></div><details class="preset-import" ${catalog.length ? '' : 'open'}><summary>${catalog.length ? 'Import / re-sync CSV' : 'Import Title Preset CSV'}</summary><label class="drop-file"><span>${icon('upload')}</span><strong>Choose Title Preset CSV</strong><small>The file is read locally and never uploaded.</small><input type="file" accept=".csv,text/csv" hidden></label></details><div id="csv-error"></div></div></div>`
+  host.innerHTML = `<div class="modal-backdrop"><div class="modal"><button class="modal-close">×</button><p class="eyebrow">TITLE PRESETS</p><h2>${e(input.shortTitle || input.title)}</h2><p>Choose how many times each preset should appear in the presentation list. Use 0 to hide it, or repeat it up to ${MAX_RESOURCE_OCCURRENCES} times.</p><div id="preset-manager"></div><details class="preset-import" ${catalog.length ? '' : 'open'}><summary>${catalog.length ? 'Import / re-sync CSV' : 'Import Title Preset CSV'}</summary><label class="drop-file"><span>${icon('upload')}</span><strong>Choose Title Preset CSV</strong><small>The file is read locally and never uploaded.</small><input type="file" accept=".csv,text/csv" hidden></label></details><div id="csv-error"></div></div></div>`
 
   host.querySelector('.modal-close').onclick = () => host.innerHTML = ''
   const dropFile = host.querySelector('.drop-file')
@@ -189,12 +207,12 @@ async function showCsvDialog(host, input, ctx) {
 
     const maxColumns = Math.max(0, ...catalog.map((p) => (p.csvRow || []).length))
     const fieldNames = fieldNamesFor(input, catalog, maxColumns)
-    manager.innerHTML = `${renderFieldMapping(fieldNames, maxColumns)}<div class="csv-summary"><strong>${catalog.length} presets available</strong><span>${e(metadata?.fileName || 'Current configuration')}</span></div><div class="csv-rows">${catalog.map((p, i) => `<div class="csv-row preset-edit-row"><div class="quantity-stepper" aria-label="Occurrences for preset ${p.presetIndex}"><button type="button" data-quantity-dec="${i}" aria-label="Decrease occurrences">−</button><input type="number" min="0" max="${MAX_PRESET_OCCURRENCES}" step="1" inputmode="numeric" value="${clampQuantity(p.quantity ?? (p.selected ? 1 : 0))}" data-preset-quantity="${i}" aria-label="Number of occurrences for preset ${p.presetIndex}"><button type="button" data-quantity-inc="${i}" aria-label="Increase occurrences">+</button></div><span class="preset-index">${p.presetIndex}</span><div class="preset-edit-copy"><small>${(p.csvRow || []).map((value, col) => `${e(fieldNames[col] || `CSV column ${col + 1}`)}: ${e(value)}`).join(' · ')}</small><label><small>Control button name</small><input class="preset-name-input" data-preset-label="${i}" value="${e(p.label || labelForRow(p.csvRow || [], p.presetIndex))}" aria-label="Control button name for preset ${p.presetIndex}"></label></div></div>`).join('')}</div><div class="modal-actions"><button class="btn ghost" id="one-each">One each</button><button class="btn ghost" id="clear-all">Clear all</button><button class="btn primary" id="apply-presets">Save presets</button></div>`
+    manager.innerHTML = `${renderFieldMapping(fieldNames, maxColumns)}<div class="csv-summary"><strong>${catalog.length} presets available</strong><span>${e(metadata?.fileName || 'Current configuration')}</span></div><div class="csv-rows">${catalog.map((p, i) => `<div class="csv-row preset-edit-row"><div class="preset-edit-copy"><small>${(p.csvRow || []).map((value, col) => `${e(fieldNames[col] || `CSV column ${col + 1}`)}: ${e(value)}`).join(' · ')}</small><label><small>Control button name</small><input class="preset-name-input" data-preset-label="${i}" value="${e(p.label || labelForRow(p.csvRow || [], p.presetIndex))}" aria-label="Control button name for preset ${p.presetIndex}"></label></div><div class="preset-row-controls"><span class="preset-index">${p.presetIndex}</span>${quantityStepper({ value: p.quantity ?? (p.selected ? 1 : 0), key: i, kind: 'preset', label: `preset ${p.presetIndex}` })}</div></div>`).join('')}</div><div class="modal-actions"><button class="btn ghost" id="one-each">One each</button><button class="btn ghost" id="clear-all">Clear all</button><button class="btn primary" id="apply-presets">Save presets</button></div>`
 
     const quantityInput = (index) => manager.querySelector(`[data-preset-quantity="${index}"]`)
     const setQuantity = (index, value) => { const field = quantityInput(index); if (field) field.value = String(clampQuantity(value)) }
-    manager.querySelectorAll('[data-quantity-dec]').forEach((button) => button.onclick = () => { const field = quantityInput(button.dataset.quantityDec); setQuantity(button.dataset.quantityDec, Number(field?.value || 0) - 1) })
-    manager.querySelectorAll('[data-quantity-inc]').forEach((button) => button.onclick = () => { const field = quantityInput(button.dataset.quantityInc); setQuantity(button.dataset.quantityInc, Number(field?.value || 0) + 1) })
+    manager.querySelectorAll('[data-preset-quantity-dec]').forEach((button) => button.onclick = () => { const field = quantityInput(button.dataset.presetQuantityDec); setQuantity(button.dataset.presetQuantityDec, Number(field?.value || 0) - 1) })
+    manager.querySelectorAll('[data-preset-quantity-inc]').forEach((button) => button.onclick = () => { const field = quantityInput(button.dataset.presetQuantityInc); setQuantity(button.dataset.presetQuantityInc, Number(field?.value || 0) + 1) })
     manager.querySelectorAll('[data-preset-quantity]').forEach((field) => field.addEventListener('change', () => { field.value = String(clampQuantity(field.value)) }))
     manager.querySelector('#one-each').onclick = () => manager.querySelectorAll('[data-preset-quantity]').forEach((field) => { field.value = '1' })
     manager.querySelector('#clear-all').onclick = () => manager.querySelectorAll('[data-preset-quantity]').forEach((field) => { field.value = '0' })
