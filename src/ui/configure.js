@@ -1,11 +1,16 @@
 import { isTitleCandidate } from '../vmix/safety.js'
 import { parseCsv, labelForRow, sha256 } from '../config/csv.js'
-import { extendVerificationFieldNames } from '../vmix/resolver.js?v=0.3.1'
+import { extendVerificationFieldNames } from '../vmix/resolver.js?v=0.3.3'
 import { resourceIcon, icon } from './icons.js'
 
 const e = (s) => String(s ?? '').replace(/[&<>'"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))
 const appVersion = document.querySelector('meta[name="pibvmix-version"]')?.content || ''
 const id = () => crypto.randomUUID?.() || `r-${Date.now()}-${Math.random()}`
+const MAX_PRESET_OCCURRENCES = 10
+const clampQuantity = (value) => {
+  const n = Number.parseInt(value, 10)
+  return Number.isFinite(n) ? Math.max(0, Math.min(MAX_PRESET_OCCURRENCES, n)) : 0
+}
 
 export function renderConfigure(root, ctx) {
   const { state, actions } = ctx
@@ -127,17 +132,48 @@ function renderFieldMapping(fieldNames, maxColumns) {
   return `<div class="csv-summary"><strong>Fields detected from vMix</strong><span>${labels.map((name, i) => `${i + 1}. ${e(name)} ← CSV ${i + 1}`).join(' · ')}</span></div>`
 }
 
+function groupResourcesByPreset(resources) {
+  const grouped = new Map()
+  for (const resource of resources) {
+    if (!grouped.has(resource.presetIndex)) grouped.set(resource.presetIndex, [])
+    grouped.get(resource.presetIndex).push(resource)
+  }
+  return grouped
+}
+
 async function showCsvDialog(host, input, ctx) {
   const source = ctx.state.config.titleSources.find((x) => x.inputKey === input.key)
   const existingResources = ctx.state.config.resources.filter((r) => r.type === 'titlePreset' && r.inputKey === input.key)
-  const existingByIndex = new Map(existingResources.map((r) => [r.presetIndex, r]))
+  const existingByIndex = groupResourcesByPreset(existingResources)
 
   let metadata = source?.csv || null
   let catalog = source?.presets?.length
-    ? source.presets.map((p) => ({ ...p, selected: existingByIndex.has(p.presetIndex), resourceId: existingByIndex.get(p.presetIndex)?.id || p.resourceId || null, label: existingByIndex.get(p.presetIndex)?.label || p.label }))
-    : existingResources.map((r) => ({ presetIndex: r.presetIndex, csvRow: r.csvRow || [], label: r.label, verification: r.verification || { mode: 'indexOnly', fieldNames: [] }, selected: true, resourceId: r.id }))
+    ? source.presets.map((p) => {
+        const occurrences = existingByIndex.get(p.presetIndex) || []
+        return {
+          ...p,
+          quantity: occurrences.length,
+          selected: occurrences.length > 0,
+          resourceIds: occurrences.map((r) => r.id),
+          resourceId: occurrences[0]?.id || p.resourceId || null,
+          label: occurrences[0]?.label || p.label,
+        }
+      })
+    : [...existingByIndex.entries()].map(([presetIndex, occurrences]) => {
+        const first = occurrences[0]
+        return {
+          presetIndex,
+          csvRow: first.csvRow || [],
+          label: first.label,
+          verification: first.verification || { mode: 'indexOnly', fieldNames: [] },
+          quantity: occurrences.length,
+          selected: true,
+          resourceIds: occurrences.map((r) => r.id),
+          resourceId: first.id,
+        }
+      })
 
-  host.innerHTML = `<div class="modal-backdrop"><div class="modal"><button class="modal-close">×</button><p class="eyebrow">TITLE PRESETS</p><h2>${e(input.shortTitle || input.title)}</h2><p>vMix provides the editable field names for this Lower. The CSV provides each preset's values in the same order. Text, image and color fields are included when vMix exposes them.</p><div id="preset-manager"></div><details class="preset-import" ${catalog.length ? '' : 'open'}><summary>${catalog.length ? 'Import / re-sync CSV' : 'Import Title Preset CSV'}</summary><label class="drop-file"><span>${icon('upload')}</span><strong>Choose Title Preset CSV</strong><small>The file is read locally and never uploaded.</small><input type="file" accept=".csv,text/csv" hidden></label></details><div id="csv-error"></div></div></div>`
+  host.innerHTML = `<div class="modal-backdrop"><div class="modal"><button class="modal-close">×</button><p class="eyebrow">TITLE PRESETS</p><h2>${e(input.shortTitle || input.title)}</h2><p>Choose how many times each preset should appear in the presentation list. Use 0 to hide it, or repeat it up to ${MAX_PRESET_OCCURRENCES} times.</p><div id="preset-manager"></div><details class="preset-import" ${catalog.length ? '' : 'open'}><summary>${catalog.length ? 'Import / re-sync CSV' : 'Import Title Preset CSV'}</summary><label class="drop-file"><span>${icon('upload')}</span><strong>Choose Title Preset CSV</strong><small>The file is read locally and never uploaded.</small><input type="file" accept=".csv,text/csv" hidden></label></details><div id="csv-error"></div></div></div>`
 
   host.querySelector('.modal-close').onclick = () => host.innerHTML = ''
   const dropFile = host.querySelector('.drop-file')
@@ -153,30 +189,43 @@ async function showCsvDialog(host, input, ctx) {
 
     const maxColumns = Math.max(0, ...catalog.map((p) => (p.csvRow || []).length))
     const fieldNames = fieldNamesFor(input, catalog, maxColumns)
-    manager.innerHTML = `${renderFieldMapping(fieldNames, maxColumns)}<div class="csv-summary"><strong>${catalog.length} presets available</strong><span>${e(metadata?.fileName || 'Current configuration')}</span></div><div class="csv-rows">${catalog.map((p, i) => `<div class="csv-row preset-edit-row"><input type="checkbox" data-preset-selected="${i}" ${p.selected ? 'checked' : ''}><span class="preset-index">${p.presetIndex}</span><div class="preset-edit-copy"><small>${(p.csvRow || []).map((value, col) => `${e(fieldNames[col] || `CSV column ${col + 1}`)}: ${e(value)}`).join(' · ')}</small><label><small>Control button name</small><input class="preset-name-input" data-preset-label="${i}" value="${e(p.label || labelForRow(p.csvRow || [], p.presetIndex))}" aria-label="Control button name for preset ${p.presetIndex}"></label></div></div>`).join('')}</div><div class="modal-actions"><button class="btn ghost" id="select-all">Select all</button><button class="btn ghost" id="select-none">Select none</button><button class="btn primary" id="apply-presets">Save presets</button></div>`
+    manager.innerHTML = `${renderFieldMapping(fieldNames, maxColumns)}<div class="csv-summary"><strong>${catalog.length} presets available</strong><span>${e(metadata?.fileName || 'Current configuration')}</span></div><div class="csv-rows">${catalog.map((p, i) => `<div class="csv-row preset-edit-row"><div class="quantity-stepper" aria-label="Occurrences for preset ${p.presetIndex}"><button type="button" data-quantity-dec="${i}" aria-label="Decrease occurrences">−</button><input type="number" min="0" max="${MAX_PRESET_OCCURRENCES}" step="1" inputmode="numeric" value="${clampQuantity(p.quantity ?? (p.selected ? 1 : 0))}" data-preset-quantity="${i}" aria-label="Number of occurrences for preset ${p.presetIndex}"><button type="button" data-quantity-inc="${i}" aria-label="Increase occurrences">+</button></div><span class="preset-index">${p.presetIndex}</span><div class="preset-edit-copy"><small>${(p.csvRow || []).map((value, col) => `${e(fieldNames[col] || `CSV column ${col + 1}`)}: ${e(value)}`).join(' · ')}</small><label><small>Control button name</small><input class="preset-name-input" data-preset-label="${i}" value="${e(p.label || labelForRow(p.csvRow || [], p.presetIndex))}" aria-label="Control button name for preset ${p.presetIndex}"></label></div></div>`).join('')}</div><div class="modal-actions"><button class="btn ghost" id="one-each">One each</button><button class="btn ghost" id="clear-all">Clear all</button><button class="btn primary" id="apply-presets">Save presets</button></div>`
 
-    manager.querySelector('#select-all').onclick = () => manager.querySelectorAll('[data-preset-selected]').forEach((x) => x.checked = true)
-    manager.querySelector('#select-none').onclick = () => manager.querySelectorAll('[data-preset-selected]').forEach((x) => x.checked = false)
+    const quantityInput = (index) => manager.querySelector(`[data-preset-quantity="${index}"]`)
+    const setQuantity = (index, value) => { const field = quantityInput(index); if (field) field.value = String(clampQuantity(value)) }
+    manager.querySelectorAll('[data-quantity-dec]').forEach((button) => button.onclick = () => { const field = quantityInput(button.dataset.quantityDec); setQuantity(button.dataset.quantityDec, Number(field?.value || 0) - 1) })
+    manager.querySelectorAll('[data-quantity-inc]').forEach((button) => button.onclick = () => { const field = quantityInput(button.dataset.quantityInc); setQuantity(button.dataset.quantityInc, Number(field?.value || 0) + 1) })
+    manager.querySelectorAll('[data-preset-quantity]').forEach((field) => field.addEventListener('change', () => { field.value = String(clampQuantity(field.value)) }))
+    manager.querySelector('#one-each').onclick = () => manager.querySelectorAll('[data-preset-quantity]').forEach((field) => { field.value = '1' })
+    manager.querySelector('#clear-all').onclick = () => manager.querySelectorAll('[data-preset-quantity]').forEach((field) => { field.value = '0' })
     manager.querySelector('#apply-presets').onclick = () => {
       const finalFieldNames = fieldNamesFor(input, catalog, maxColumns)
       const updatedCatalog = catalog.map((p, i) => ({
         ...p,
-        selected: manager.querySelector(`[data-preset-selected="${i}"]`).checked,
+        quantity: clampQuantity(quantityInput(i)?.value),
+        selected: clampQuantity(quantityInput(i)?.value) > 0,
         label: manager.querySelector(`[data-preset-label="${i}"]`).value.trim() || labelForRow(p.csvRow || [], p.presetIndex),
         verification: {
           mode: finalFieldNames.length >= (p.csvRow || []).length && (p.csvRow || []).length ? 'verifiedFields' : 'indexOnly',
           fieldNames: finalFieldNames.slice(0, (p.csvRow || []).length),
         },
       }))
-      const resources = updatedCatalog.filter((p) => p.selected).map((p) => ({
-        id: p.resourceId || id(),
-        type: 'titlePreset',
-        label: p.label,
-        inputKey: input.key,
-        presetIndex: p.presetIndex,
-        csvRow: p.csvRow || [],
-        verification: p.verification || { mode: 'indexOnly', fieldNames: [] },
-      }))
+      const resources = []
+      for (const p of updatedCatalog) {
+        const previousIds = p.resourceIds || (p.resourceId ? [p.resourceId] : [])
+        const ids = Array.from({ length: p.quantity }, (_, occurrenceIndex) => previousIds[occurrenceIndex] || id())
+        p.resourceIds = ids
+        p.resourceId = ids[0] || null
+        for (const resourceId of ids) resources.push({
+          id: resourceId,
+          type: 'titlePreset',
+          label: p.label,
+          inputKey: input.key,
+          presetIndex: p.presetIndex,
+          csvRow: p.csvRow || [],
+          verification: p.verification || { mode: 'indexOnly', fieldNames: [] },
+        })
+      }
       ctx.actions.replaceTitleResources(input.key, resources, metadata || { fileName: 'Current configuration', importedAt: new Date().toISOString(), rowCount: updatedCatalog.length, sha256: 'legacy' }, updatedCatalog)
       host.innerHTML = ''
     }
@@ -205,7 +254,9 @@ async function showCsvDialog(host, input, ctx) {
           csvRow: row,
           label: sameRow ? previous.label : labelForRow(row, presetIndex),
           verification: { mode: fieldNames.length >= row.length ? 'verifiedFields' : 'indexOnly', fieldNames: fieldNames.slice(0, row.length) },
-          selected: previous ? previous.selected : true,
+          quantity: previous ? clampQuantity(previous.quantity ?? (previous.selected ? 1 : 0)) : 1,
+          selected: previous ? clampQuantity(previous.quantity ?? (previous.selected ? 1 : 0)) > 0 : true,
+          resourceIds: sameRow ? (previous.resourceIds || (previous.resourceId ? [previous.resourceId] : [])) : [],
           resourceId: sameRow ? previous.resourceId : null,
         }
       })
