@@ -62,7 +62,9 @@ export class MockVmixClient {
 
     const input = findInput(this.model, params.Input)
     if (!input) throw new Error('vMix HTTP 500: input not found')
-    if (functionName === 'PreviewInput') this.model.preview = input.number
+    if (functionName === 'PauseRender') input.renderPaused = true
+    else if (functionName === 'ResumeRender') input.renderPaused = false
+    else if (functionName === 'PreviewInput') this.model.preview = input.number
     else if (functionName === 'SelectTitlePreset') {
       const index = Number(params.Value)
       const row = input.presets?.[index]

@@ -1,14 +1,14 @@
 import { createStore, initialState } from './state/store.js?v=0.2.0'
 import { VmixClient, normalizeTarget } from './vmix/client.js?v=0.2.0'
-import { MockVmixClient } from './vmix/mock.js?v=0.3.0'
+import { MockVmixClient } from './vmix/mock.js?v=0.3.2'
 import { parseVmixXml } from './vmix/parser.js?v=0.2.0'
 import { VmixPoller } from './vmix/poller.js?v=0.2.0'
-import { buildOnAirSet, getTitleSwapContext } from './vmix/safety.js?v=0.3.0'
+import { buildOnAirSet, getTitleSwapContext } from './vmix/safety.js?v=0.3.2'
 import { isResourceFullyVerifiable, resolveTitleResource, verifyResourceFields } from './vmix/resolver.js?v=0.3.1'
 import { loadConfig, saveConfig } from './config/storage.js?v=0.2.0'
 import { downloadConfig, readConfigFile } from './config/backup.js?v=0.2.0'
-import { renderConfigure } from './ui/configure.js?v=0.3.1'
-import { renderControl } from './ui/control.js?v=0.3.1'
+import { renderConfigure } from './ui/configure.js?v=0.3.2'
+import { renderControl } from './ui/control.js?v=0.3.2'
 
 const saved = loadConfig()
 const store = createStore({ ...initialState, config: saved || initialState.config })
@@ -157,6 +157,36 @@ async function tryRestoreSwappedLower(inputKey, overlayNumber, originalResource)
   }
 }
 
+async function tryRestoreProgramLower(inputKey, originalResource, renderAlreadyPaused) {
+  if (!originalResource) return false
+  let renderPaused = renderAlreadyPaused
+  try {
+    let state = await applyXml(await client.fetchState())
+    if (state.mainMix?.programKey !== inputKey) return false
+    if (!renderPaused) {
+      logCommand('SWAP program rollback pause render', { inputKey })
+      await client.command('PauseRender', { Input: inputKey })
+      renderPaused = true
+    }
+    logCommand('SWAP program rollback select preset', { inputKey, presetIndex: originalResource.presetIndex, label: originalResource.label })
+    await client.command('SelectTitlePreset', { Input: inputKey, Value: originalResource.presetIndex })
+    state = await waitFor((s) => s.mainMix?.programKey === inputKey && verifyResourceFields(s.inputByKey[inputKey], originalResource), 1800, 75)
+    logCommand('SWAP program rollback resume render', { inputKey })
+    await client.command('ResumeRender', { Input: inputKey })
+    renderPaused = false
+    await waitFor((s) => s.mainMix?.programKey === inputKey && verifyResourceFields(s.inputByKey[inputKey], originalResource), 1800, 75)
+    return true
+  } catch (err) {
+    console.error('[PIBvMix][command] SWAP program rollback failed', err)
+    return false
+  } finally {
+    if (renderPaused) {
+      try { await client.command('ResumeRender', { Input: inputKey }) }
+      catch (err) { console.error('[PIBvMix][command] SWAP program emergency resume failed', err) }
+    }
+  }
+}
+
 async function swapResource(id) {
   const resource = store.getState().config.resources.find((r) => r.id === id)
   if (!resource || resource.type !== 'titlePreset' || !client) return
@@ -167,6 +197,8 @@ async function swapResource(id) {
   let originalResource = null
   let overlayNumber = null
   let lowerWasTakenOut = false
+  let programRenderPaused = false
+  let swapStrategy = null
   logCommand('SWAP start', { id, inputKey:key, presetIndex:resource.presetIndex, label:resource.label })
   try {
     let state = await applyXml(await client.fetchState())
@@ -187,6 +219,26 @@ async function swapResource(id) {
     logCommand('SWAP context', { inputKey:key, ...context })
     if (!context.eligible) throw new Error(`This Lower cannot be swapped safely (${context.reason}).`)
     overlayNumber = context.overlayNumber
+    swapStrategy = context.reason
+
+    if (swapStrategy === 'direct-program') {
+      logCommand('SWAP program pause render', { inputKey:key })
+      await client.command('PauseRender', { Input: key })
+      programRenderPaused = true
+      state = await applyXml(await client.fetchState())
+      if (state.mainMix?.programKey !== key) throw new Error('Program changed before the preset could be selected.')
+
+      logCommand('SWAP program select target preset', { inputKey:key, presetIndex:resource.presetIndex, label:resource.label })
+      await client.command('SelectTitlePreset', { Input: key, Value: resource.presetIndex })
+      state = await waitFor((s) => s.mainMix?.programKey === key && verifyResourceFields(s.inputByKey[key], resource), 1800, 75)
+
+      logCommand('SWAP program resume render', { inputKey:key })
+      await client.command('ResumeRender', { Input: key })
+      programRenderPaused = false
+      await waitFor((s) => s.mainMix?.programKey === key && verifyResourceFields(s.inputByKey[key], resource), 1800, 75)
+      logCommand('SWAP complete', { inputKey:key, strategy:swapStrategy, presetIndex:resource.presetIndex, label:resource.label })
+      return toast(`${resource.label} is CURRENT and ON AIR.`, 'success')
+    }
 
     logCommand('SWAP overlay out', { inputKey:key, overlayNumber })
     await client.command(`OverlayInput${overlayNumber}Out`)
@@ -213,9 +265,11 @@ async function swapResource(id) {
     toast(`${resource.label} is CURRENT and ON AIR.`, 'success')
   } catch (err) {
     console.error('[PIBvMix][command] SWAP failed', { inputKey:key, target:resource.label, error:err })
-    const restored = lowerWasTakenOut && overlayNumber !== null && originalResource
-      ? await tryRestoreSwappedLower(key, overlayNumber, originalResource)
-      : false
+    const restored = swapStrategy === 'direct-program' && originalResource
+      ? await tryRestoreProgramLower(key, originalResource, programRenderPaused)
+      : lowerWasTakenOut && overlayNumber !== null && originalResource
+        ? await tryRestoreSwappedLower(key, overlayNumber, originalResource)
+        : false
     const suffix = restored ? ' Previous Lower restored.' : ''
     toast(`${err.message || 'SWAP failed.'}${suffix}`, 'error', 5200)
   } finally {

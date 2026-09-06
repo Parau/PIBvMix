@@ -4,6 +4,7 @@ import { extendVerificationFieldNames } from '../vmix/resolver.js?v=0.3.1'
 import { resourceIcon, icon } from './icons.js'
 
 const e = (s) => String(s ?? '').replace(/[&<>'"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))
+const appVersion = document.querySelector('meta[name="pibvmix-version"]')?.content || ''
 const id = () => crypto.randomUUID?.() || `r-${Date.now()}-${Math.random()}`
 
 export function renderConfigure(root, ctx) {
@@ -27,7 +28,7 @@ export function renderConfigure(root, ctx) {
 
   root.innerHTML = `
   <header class="topbar">
-    <div class="brand"><span class="brand-mark">◆</span><strong>PIBvMix</strong></div>
+    <div class="brand"><span class="brand-mark">◆</span><strong>PIBvMix</strong>${appVersion ? `<small class="brand-version">v${e(appVersion)}</small>` : ''}</div>
     <div class="connection-chip ${e(state.connection.status)}"><span class="dot"></span>${e(state.connection.status === 'connected' ? (state.ui.demo ? 'Demo connected' : 'Connected') : state.connection.status)}</div>
     <div class="topbar-spacer"></div>
     <button class="btn ghost" data-action="control">Control</button>

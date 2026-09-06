@@ -40,6 +40,16 @@ test('SWAP context allows only one direct active overlay path',()=>{
   assert.equal(getTitleSwapContext(extraMix,'lower').eligible,false)
 })
 
+test('SWAP context allows a Title that is directly in Program',()=>{
+  const state={
+    mainMix:{programKey:'lower'}, inputKeyByNumber:{1:'lower'}, additionalMixes:[],
+    inputs:[{key:'lower',layers:[]}], overlays:[],
+  }
+  assert.deepEqual(getTitleSwapContext(state,'lower'),{eligible:true,overlayNumber:null,reason:'direct-program'})
+  const nested={...state,mainMix:{programKey:'mix'},inputs:[{key:'mix',layers:[{key:'lower'}]},{key:'lower',layers:[]}]}
+  assert.equal(getTitleSwapContext(nested,'lower').reason,'not-direct-single-overlay')
+})
+
 test('mock XML represents two active overlays like vMix',()=>{
   const model=createMockModel()
   const xml=modelToXml(model)
@@ -68,6 +78,19 @@ test('mock vMix commands update title, preview and overlay swap primitives',asyn
   assert.equal(c.model.overlays.find((x)=>x.number===2).inputNumber,input.number)
   await c.command('PreviewInput',{Input:'lower-people',Mix:0})
   assert.equal(c.model.preview,input.number)
+})
+
+test('mock vMix supports frozen-render Program preset replacement',async()=>{
+  const c=new MockVmixClient({latencyMs:0})
+  c.model.active=5
+  await c.command('PauseRender',{Input:'lower-people'})
+  assert.equal(c.model.inputs.find((x)=>x.key==='lower-people').renderPaused,true)
+  await c.command('SelectTitlePreset',{Input:'lower-people',Value:1})
+  await c.command('ResumeRender',{Input:'lower-people'})
+  const input=c.model.inputs.find((x)=>x.key==='lower-people')
+  assert.equal(input.renderPaused,false)
+  assert.equal(input.text[0].value,'Maria Silva')
+  assert.equal(c.model.active,5)
 })
 
 test('field verification detects a stale preset',()=>{

@@ -47,6 +47,9 @@ export function getTitleSwapContext(vmixState, inputKey) {
 
   const direct = activeOverlays.filter((overlay) => overlay.inputKey === inputKey)
   if (sources.length !== 1) return { eligible: false, overlayNumber: null, reason: sources.length ? 'multiple-on-air-paths' : 'not-on-air' }
+  if (sources[0].kind === 'program' && sources[0].rootKey === inputKey && programKey === inputKey) {
+    return { eligible: true, overlayNumber: null, reason: 'direct-program' }
+  }
   if (direct.length !== 1 || sources[0].kind !== 'overlay' || sources[0].rootKey !== inputKey) {
     return { eligible: false, overlayNumber: null, reason: 'not-direct-single-overlay' }
   }

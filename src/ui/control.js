@@ -1,8 +1,9 @@
-import { buildOnAirSet, getTitleSwapContext } from '../vmix/safety.js?v=0.3.0'
+import { buildOnAirSet, getTitleSwapContext } from '../vmix/safety.js?v=0.3.2'
 import { effectiveVerification, isResourceFullyVerifiable, resolveTitleResource } from '../vmix/resolver.js?v=0.3.1'
 import { resourceIcon, icon } from './icons.js?v=0.2.0'
 
 const e = (s) => String(s ?? '').replace(/[&<>'"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))
+const appVersion = document.querySelector('meta[name="pibvmix-version"]')?.content || ''
 let lastTitleDiagnosticsFingerprint = ''
 
 function logTitleDiagnostics(vmix, titleGroups, titleResolution, titleSwapContext, onAir) {
@@ -77,7 +78,7 @@ export function renderControl(root, ctx) {
   })
 
   root.innerHTML = `<header class="topbar control-topbar">
-    <div class="brand"><span class="brand-mark">◆</span><strong>PIBvMix</strong></div>
+    <div class="brand"><span class="brand-mark">◆</span><strong>PIBvMix</strong>${appVersion ? `<small class="brand-version">v${e(appVersion)}</small>` : ''}</div>
     <div class="connection-chip ${e(state.connection.status)}"><span class="dot"></span>${e(state.connection.status === 'connected' ? (state.ui.demo ? 'Demo connected' : 'Connected') : state.connection.status)}</div>
     <div class="topbar-spacer"></div><button class="btn primary" data-action="configure" title="Return to resource setup. Your current palette is preserved.">← Edit resources</button>
   </header>
@@ -117,7 +118,10 @@ function card(r, vmix, onAir, state, titleResolution, titleSwapContext) {
     <div class="resource-copy"><strong>${e(r.label)}</strong><span>${e(typeName)}${r.type==='titlePreset'?` · Preset ${r.presetIndex}`:''}</span></div>`
 
   if (blocked && !missing && !offline && !busy) {
-    const badges = `<div class="state-badges">${isCurrent ? '<span class="state-badge current">CURRENT</span>' : ''}${canSwap ? `<button class="state-badge swap" type="button" data-swap-resource="${e(r.id)}" title="Transition the current Lower out, load this preset, verify it, then transition it back in.">SWAP</button>` : ''}<span class="state-badge onair">ON AIR</span></div>`
+    const swapTitle = swapContext?.reason === 'direct-program'
+      ? 'Freeze the live Title render, load and verify this preset, then resume rendering.'
+      : 'Transition the current Lower out, load this preset, verify it, then transition it back in.'
+    const badges = `<div class="state-badges">${isCurrent ? '<span class="state-badge current">CURRENT</span>' : ''}${canSwap ? `<button class="state-badge swap" type="button" data-swap-resource="${e(r.id)}" title="${e(swapTitle)}">SWAP</button>` : ''}<span class="state-badge onair">ON AIR</span></div>`
     return `<article class="resource-card onair blocked-card" data-blocked-resource="${e(r.id)}">${content}${badges}</article>`
   }
 

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="pibvmix-version" content="0.3.2">
+  <title>PIBvMix Program SWAP UI smoke</title>
+  <link rel="stylesheet" href="../src/styles/app.css?v=0.3.2">
+  <link rel="stylesheet" href="../src/styles/swap.css?v=0.3.2">
+  <link rel="stylesheet" href="../src/styles/version.css?v=0.3.2">
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module">
+    import { renderControl } from '../src/ui/control.js'
+
+    window.calls = []
+    const inputKey = 'lower-people'
+    const resources = [
+      { id: 'person-1', type: 'titlePreset', label: 'Nome 01 pessoa', inputKey, presetIndex: 0, csvRow: ['Nome 01 pessoa', 'Cargo 01 pessoa'], verification: { mode: 'verifiedFields', fieldNames: ['Name.Text', 'Role.Text'] } },
+      { id: 'person-2', type: 'titlePreset', label: 'Nome 02 pessoa', inputKey, presetIndex: 1, csvRow: ['Nome 02 pessoa', 'Cargo 02 pessoa'], verification: { mode: 'verifiedFields', fieldNames: ['Name.Text', 'Role.Text'] } },
+    ]
+    const inputs = [
+      { key: inputKey, number: 6, type: 'GT', title: 'Lower nomes de pessoas.gtzip', shortTitle: 'Lower nomes de pessoas', layers: [], text: [{ name: 'Name.Text', value: 'Nome 01 pessoa' }, { name: 'Role.Text', value: 'Cargo 01 pessoa' }], image: [], color: [] },
+      { key: 'lower-guest', number: 7, type: 'GT', title: 'Lower convidado.gtzip', shortTitle: 'Lower convidado', layers: [], text: [], image: [], color: [] },
+    ]
+    const state = {
+      connection: { status: 'connected' },
+      ui: { demo: false, query: '', filter: 'all', busyInputKeys: [], toast: null },
+      config: { resources },
+      vmixState: {
+        inputs,
+        inputByKey: Object.fromEntries(inputs.map(input => [input.key, input])),
+        inputKeyByNumber: { 6: inputKey, 7: 'lower-guest' },
+        mainMix: { programKey: inputKey, previewKey: 'lower-guest' },
+        overlays: [],
+        additionalMixes: [],
+      },
+    }
+    const actions = {
+      toConfigure() {}, setQuery() {}, setFilter() {},
+      sendResource(id) { window.calls.push(['send', id]) },
+      swapResource(id) { window.calls.push(['swap', id]) },
+    }
+    renderControl(document.querySelector('#app'), { state, actions })
+  </script>
+</body>
+</html>

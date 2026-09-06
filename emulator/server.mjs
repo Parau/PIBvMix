@@ -25,7 +25,9 @@ const server = http.createServer((req,res)=>{
       }
       const input=findInput(url.searchParams.get('Input'))
       if(!input) throw new Error('Input not found')
-      if(fn==='PreviewInput') model.preview=input.number
+      if(fn==='PauseRender') input.renderPaused=true
+      else if(fn==='ResumeRender') input.renderPaused=false
+      else if(fn==='PreviewInput') model.preview=input.number
       else if(fn==='SelectTitlePreset'){
         const index=Number(url.searchParams.get('Value')); const row=input.presets?.[index]; if(!row) throw new Error('Preset not found')
         input.text.forEach((field,i)=>field.value=row[i]??'')
