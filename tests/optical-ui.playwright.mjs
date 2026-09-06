@@ -21,8 +21,6 @@ const partialAllFrames = await frameTexts(partialConfig, 1)
 const partialFrames = partialAllFrames.slice(0, 3)
 
 function initScript({ config, frames }) {
-  // addInitScript runs again after location.reload(). Seed the old config only
-  // once so the test can verify the value persisted by the optical import.
   if (!sessionStorage.getItem('__pibvmixOpticalSeeded')) {
     localStorage.setItem('pibvmix:v2:config', JSON.stringify(config))
     sessionStorage.setItem('__pibvmixOpticalSeeded', '1')
@@ -57,7 +55,6 @@ try {
   await page.goto('http://127.0.0.1:4173/', { waitUntil: 'networkidle' })
   assert.equal(await page.locator('.brand-version').textContent(), 'v0.3.5')
 
-  // Existing file paths remain visible beside the new optical choices.
   await page.getByText('Export ▾', { exact: true }).click()
   assert.ok(await page.locator('.backup-menu').first().getByText('Arquivo', { exact: true }).count())
   await page.locator('[data-optical-export]').click()
@@ -79,7 +76,6 @@ try {
   assert.equal(await page.locator('[data-summary-resources]').textContent(), String(incomingConfig.resources.length))
   assert.equal(await page.locator('[data-summary-titles]').textContent(), '1')
   assert.equal(await page.locator('[data-summary-vmix]').textContent(), incomingConfig.vmix.target)
-  // Decoding already completed, so the camera must be stopped before the user decides.
   assert.ok(await page.evaluate(() => window.__cameraStops) >= 1)
 
   await Promise.all([
@@ -96,9 +92,10 @@ try {
   await cancelPage.goto('http://127.0.0.1:4173/', { waitUntil: 'networkidle' })
   await cancelPage.getByText('Import ▾', { exact: true }).click()
   await cancelPage.locator('[data-optical-import]').click()
-  await cancelPage.waitForFunction(() => Number(document.querySelector('[data-optical-progress]')?.value || 0) > 0, null, { timeout: 5000 })
-  const pct = await cancelPage.locator('[data-optical-progress]').getAttribute('value')
-  assert.ok(Number(pct) < 100)
+  await cancelPage.waitForSelector('.optical-progress', { state: 'visible', timeout: 5000 })
+  await cancelPage.waitForFunction(() => document.querySelector('[data-optical-status]')?.textContent?.includes('Recebendo'), null, { timeout: 5000 })
+  const pct = Number(await cancelPage.locator('[data-optical-progress]').getAttribute('value'))
+  assert.ok(pct >= 0 && pct < 100)
   await cancelPage.locator('[data-optical-close]').last().click()
   assert.deepEqual(await cancelPage.evaluate((key) => JSON.parse(localStorage.getItem(key)), STORAGE_KEY), originalConfig)
   assert.ok(await cancelPage.evaluate(() => window.__cameraStops) >= 1)
