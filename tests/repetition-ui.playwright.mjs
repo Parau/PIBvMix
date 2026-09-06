@@ -31,7 +31,8 @@ try {
   const controlsBox = await firstRow.locator('.preset-row-controls').boundingBox()
   const nameBox = await firstRow.locator('.preset-name-input').boundingBox()
   assert.ok(copyBox && controlsBox && nameBox)
-  assert.ok(copyBox.right <= controlsBox.x + 1, `preset content overlaps controls: copy right ${copyBox.right}, controls x ${controlsBox.x}`)
+  const copyRight = copyBox.x + copyBox.width
+  assert.ok(copyRight <= controlsBox.x + 1, `preset content overlaps controls: copy right ${copyRight}, controls x ${controlsBox.x}`)
   assert.ok(nameBox.width >= 250, `preset name input is too narrow: ${nameBox.width}`)
   assert.equal(await firstRow.locator('[data-preset-quantity]').inputValue(), '1')
   await firstRow.locator('[data-preset-quantity-inc]').click()
