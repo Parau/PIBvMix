@@ -61,10 +61,10 @@ export class OpticalReceiver {
   get progress() {
     if (!this.decoder) return 0
     if (this.decoder.isComplete) return 100
+    // Report only blocks actually solved by the fountain decoder. Frame count can
+    // rise without adding independent information, so it is diagnostic only.
     const solved = this.decoder.k ? this.decoder.solvedCount / this.decoder.k : 0
-    const targetFrames = Math.max(this.decoder.k, Math.ceil(this.decoder.k * 1.15))
-    const collected = Math.min(1, this.decoder.framesNew / targetFrames)
-    return Math.min(99, Math.floor(Math.max(solved, collected) * 100))
+    return Math.min(99, Math.floor(solved * 100))
   }
 
   get stats() {
