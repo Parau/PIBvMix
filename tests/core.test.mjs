@@ -4,7 +4,7 @@ import { normalizeTarget } from '../src/vmix/client.js'
 import { buildOnAirSet, getTitleSwapContext } from '../src/vmix/safety.js'
 import { parseCsv, labelForRow } from '../src/config/csv.js'
 import { createMockModel, modelToXml, MockVmixClient } from '../src/vmix/mock.js'
-import { effectiveVerification, isResourceFullyVerifiable, resolveTitleResource, verifyResourceFields } from '../src/vmix/resolver.js'
+import { effectiveVerification, isResourceFullyVerifiable, resolveTitleResource, sameTitlePreset, verifyResourceFields } from '../src/vmix/resolver.js'
 
 test('normalizes vMix addresses',()=>{
   assert.equal(normalizeTarget('192.168.1.50'),'http://192.168.1.50:8088')
@@ -101,18 +101,39 @@ test('field verification detects a stale preset',()=>{
   assert.equal(verifyResourceFields(input,stale),false)
 })
 
-test('title resolver reports ambiguity instead of guessing between identical presets',()=>{
+test('repeated occurrences of the same preset resolve once instead of becoming ambiguous',()=>{
+  const input={key:'lower',text:[{name:'Name.Text',value:'Maria Silva'},{name:'Role.Text',value:'CFO'}]}
+  const first={id:'a',type:'titlePreset',inputKey:'lower',presetIndex:2,csvRow:['Maria Silva','CFO'],verification:{fieldNames:['Name.Text','Role.Text']}}
+  const second={...first,id:'b'}
+  const third={...first,id:'c'}
+  const resolution=resolveTitleResource(input,[first,second,third])
+  assert.equal(resolution.status,'exact')
+  assert.equal(sameTitlePreset(resolution.resource,first),true)
+  assert.equal(sameTitlePreset(resolution.resource,second),true)
+  assert.equal(sameTitlePreset(first,{...first,presetIndex:3}),false)
+})
+
+test('different preset indexes with identical content remain ambiguous',()=>{
   const input={key:'lower',text:[{name:'Name.Text',value:'Same Name'},{name:'Instagram.Text',value:'@same'}]}
   const resources=[
-    {id:'a',type:'titlePreset',inputKey:'lower',csvRow:['Same Name','@same'],verification:{fieldNames:['Name.Text','Instagram.Text']}},
-    {id:'b',type:'titlePreset',inputKey:'lower',csvRow:['Same Name','@same'],verification:{fieldNames:['Name.Text','Instagram.Text']}},
+    {id:'a',type:'titlePreset',inputKey:'lower',presetIndex:0,csvRow:['Same Name','@same'],verification:{fieldNames:['Name.Text','Instagram.Text']}},
+    {id:'b',type:'titlePreset',inputKey:'lower',presetIndex:1,csvRow:['Same Name','@same'],verification:{fieldNames:['Name.Text','Instagram.Text']}},
+  ]
+  assert.equal(resolveTitleResource(input,resources).status,'ambiguous')
+})
+
+test('conflicting definitions for repeated occurrences fail closed',()=>{
+  const input={key:'lower',text:[{name:'Name.Text',value:'Maria Silva'},{name:'Role.Text',value:'CFO'}]}
+  const resources=[
+    {id:'a',type:'titlePreset',inputKey:'lower',presetIndex:2,csvRow:['Maria Silva','CFO'],verification:{fieldNames:['Name.Text','Role.Text']}},
+    {id:'b',type:'titlePreset',inputKey:'lower',presetIndex:2,csvRow:['Maria Silva','CEO'],verification:{fieldNames:['Name.Text','Role.Text']}},
   ]
   assert.equal(resolveTitleResource(input,resources).status,'ambiguous')
 })
 
 test('indexOnly title becomes fully verifiable by appending exposed image field without changing text mapping order',()=>{
   const input={key:'lower',text:[{name:'TextBlock1.Text',value:'Cargo 01'},{name:'TextBlock2.Text',value:'Nome 01'}],image:[{name:'Image1.Source',value:'img.jpg'}],color:[]}
-  const resource={id:'r',type:'titlePreset',inputKey:'lower',csvRow:['Nome 01','Cargo 01','img.jpg'],verification:{mode:'indexOnly',fieldNames:['TextBlock2.Text','TextBlock1.Text']}}
+  const resource={id:'r',type:'titlePreset',inputKey:'lower',presetIndex:0,csvRow:['Nome 01','Cargo 01','img.jpg'],verification:{mode:'indexOnly',fieldNames:['TextBlock2.Text','TextBlock1.Text']}}
   assert.deepEqual(effectiveVerification(input,resource),{mode:'verifiedFields',fieldNames:['TextBlock2.Text','TextBlock1.Text','Image1.Source']})
   assert.equal(isResourceFullyVerifiable(input,resource),true)
   assert.equal(verifyResourceFields(input,resource),true)
@@ -121,8 +142,8 @@ test('indexOnly title becomes fully verifiable by appending exposed image field 
 
 test('effective verification can include color and refuses unresolved extra CSV columns',()=>{
   const input={key:'lower',text:[{name:'Name.Text',value:'Ana'}],image:[{name:'Photo.Source',value:'ana.jpg'}],color:[{name:'Accent.Color',value:'#fff'}]}
-  const ok={id:'ok',type:'titlePreset',inputKey:'lower',csvRow:['Ana','ana.jpg','#fff'],verification:{mode:'indexOnly',fieldNames:['Name.Text']}}
-  const incomplete={id:'bad',type:'titlePreset',inputKey:'lower',csvRow:['Ana','ana.jpg','#fff','extra'],verification:{mode:'indexOnly',fieldNames:['Name.Text']}}
+  const ok={id:'ok',type:'titlePreset',inputKey:'lower',presetIndex:0,csvRow:['Ana','ana.jpg','#fff'],verification:{mode:'indexOnly',fieldNames:['Name.Text']}}
+  const incomplete={id:'bad',type:'titlePreset',inputKey:'lower',presetIndex:1,csvRow:['Ana','ana.jpg','#fff','extra'],verification:{mode:'indexOnly',fieldNames:['Name.Text']}}
   assert.deepEqual(effectiveVerification(input,ok).fieldNames,['Name.Text','Photo.Source','Accent.Color'])
   assert.equal(verifyResourceFields(input,ok),true)
   assert.equal(isResourceFullyVerifiable(input,incomplete),false)
@@ -131,7 +152,7 @@ test('effective verification can include color and refuses unresolved extra CSV 
 
 test('stale text remains unresolved even when image matches',()=>{
   const input={key:'lower',text:[{name:'Role.Text',value:'Cargo 01'},{name:'Name.Text',value:'Nome 01a'}],image:[{name:'Photo.Source',value:'same.jpg'}],color:[]}
-  const resource={id:'r',type:'titlePreset',inputKey:'lower',csvRow:['Nome 01','Cargo 01','same.jpg'],verification:{mode:'indexOnly',fieldNames:['Name.Text','Role.Text']}}
+  const resource={id:'r',type:'titlePreset',inputKey:'lower',presetIndex:0,csvRow:['Nome 01','Cargo 01','same.jpg'],verification:{mode:'indexOnly',fieldNames:['Name.Text','Role.Text']}}
   assert.equal(verifyResourceFields(input,resource),false)
   assert.equal(resolveTitleResource(input,[resource]).status,'unknown')
 })
