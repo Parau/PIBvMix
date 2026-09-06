@@ -1,6 +1,6 @@
 {
   "name":"pibvmix",
-  "version":"0.3.2",
+  "version":"0.3.3",
   "private":true,
   "type":"module",
   "scripts":{"test":"node --test tests/core.test.mjs tests/emulator.test.mjs","emulator":"node emulator/server.mjs","serve":"python -m http.server 4173"}
