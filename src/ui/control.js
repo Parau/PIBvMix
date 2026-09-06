@@ -1,5 +1,5 @@
 import { buildOnAirSet, getTitleSwapContext } from '../vmix/safety.js?v=0.3.2'
-import { effectiveVerification, isResourceFullyVerifiable, resolveTitleResource } from '../vmix/resolver.js?v=0.3.1'
+import { effectiveVerification, isResourceFullyVerifiable, resolveTitleResource, sameTitlePreset } from '../vmix/resolver.js?v=0.3.3'
 import { resourceIcon, icon } from './icons.js?v=0.2.0'
 
 const e = (s) => String(s ?? '').replace(/[&<>'"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))
@@ -27,6 +27,7 @@ function logTitleDiagnostics(vmix, titleGroups, titleResolution, titleSwapContex
         status: resolution?.status || 'none',
         currentId: resolution?.resource?.id || null,
         currentLabel: resolution?.resource?.label || null,
+        currentPresetIndex: resolution?.resource?.presetIndex ?? null,
       },
       swap: swap || { eligible: false, reason: 'missing-state' },
       resources: group.map((resource) => ({
@@ -97,7 +98,8 @@ function card(r, vmix, onAir, state, titleResolution, titleSwapContext) {
   const busy = state.ui.busyInputKeys.includes(r.inputKey)
   const blocked = r.type === 'titlePreset' && onAir.has(r.inputKey)
   const resolution = r.type === 'titlePreset' ? titleResolution.get(r.inputKey) : null
-  const isCurrent = blocked && resolution?.status === 'exact' && resolution.resource?.id === r.id
+  const isResolvedPreset = r.type === 'titlePreset' && resolution?.status === 'exact' && sameTitlePreset(resolution.resource, r)
+  const isCurrent = blocked && isResolvedPreset
   const swapContext = r.type === 'titlePreset' ? titleSwapContext.get(r.inputKey) : null
   const currentVerifiable = resolution?.resource ? isResourceFullyVerifiable(input, resolution.resource) : false
   const targetVerifiable = r.type === 'titlePreset' ? isResourceFullyVerifiable(input, r) : false
@@ -109,7 +111,7 @@ function card(r, vmix, onAir, state, titleResolution, titleSwapContext) {
   else if (blocked) { status = 'ON AIR'; cls = 'onair' }
   else if (vmix.mainMix.previewKey === r.inputKey) {
     if (r.type === 'titlePreset') {
-      if (resolution?.status === 'exact' && resolution.resource?.id === r.id) { status = 'PREVIEW'; cls = 'preview' }
+      if (isResolvedPreset) { status = 'PREVIEW'; cls = 'preview' }
     } else { status = 'PREVIEW'; cls = 'preview' }
   }
   if (vmix.mainMix.programKey === r.inputKey && r.type !== 'titlePreset') { status = 'PROGRAM'; cls = 'program' }
