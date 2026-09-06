@@ -3,7 +3,7 @@ name: PIBvMix branch tests
 on:
   push:
     branches:
-      - 02-permite-repeticao-do-input
+      - 03-com-qr-code
   workflow_dispatch:
 
 jobs:
@@ -14,15 +14,28 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Unit and emulator tests
+      - name: Unit, emulator and optical tests
         run: npm test
       - name: Browser module syntax
-        run: node --check src/app.js && node --check src/ui/configure.js && node --check src/ui/control.js
+        run: |
+          node --check src/app.js
+          node --check src/ui/configure.js
+          node --check src/ui/control.js
+          node --check src/optical/protocol.js
+          node --check src/optical/fountain.js
+          node --check src/optical/container.js
+          node --check src/optical/sender.js
+          node --check src/optical/receiver.js
+          node --check src/optical/qr.js
+          node --check src/optical/bootstrap.js
+          node --check src/ui/optical-export.js
+          node --check src/ui/optical-import.js
       - name: Install Playwright Chromium
         run: |
           npm install --no-save playwright@1.55.0
           npx playwright install chromium
-      - name: Playwright repetition UI
+      - name: Playwright UI regression and optical transfer
         run: |
           python3 -m http.server 4173 > /tmp/pibvmix-http.log 2>&1 &
           node tests/repetition-ui.playwright.mjs
+          node tests/optical-ui.playwright.mjs
