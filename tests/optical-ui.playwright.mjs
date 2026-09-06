@@ -21,7 +21,12 @@ const partialAllFrames = await frameTexts(partialConfig, 1)
 const partialFrames = partialAllFrames.slice(0, 3)
 
 function initScript({ config, frames }) {
-  localStorage.setItem('pibvmix:v2:config', JSON.stringify(config))
+  // addInitScript runs again after location.reload(). Seed the old config only
+  // once so the test can verify the value persisted by the optical import.
+  if (!sessionStorage.getItem('__pibvmixOpticalSeeded')) {
+    localStorage.setItem('pibvmix:v2:config', JSON.stringify(config))
+    sessionStorage.setItem('__pibvmixOpticalSeeded', '1')
+  }
   window.__qrMakeCount = 0
   window.qrcode = () => ({
     addData() {},
@@ -74,6 +79,8 @@ try {
   assert.equal(await page.locator('[data-summary-resources]').textContent(), String(incomingConfig.resources.length))
   assert.equal(await page.locator('[data-summary-titles]').textContent(), '1')
   assert.equal(await page.locator('[data-summary-vmix]').textContent(), incomingConfig.vmix.target)
+  // Decoding already completed, so the camera must be stopped before the user decides.
+  assert.ok(await page.evaluate(() => window.__cameraStops) >= 1)
 
   await Promise.all([
     page.waitForNavigation({ waitUntil: 'domcontentloaded' }),
@@ -81,7 +88,6 @@ try {
   ])
   const afterConfirm = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)), STORAGE_KEY)
   assert.deepEqual(afterConfirm, incomingConfig)
-  assert.ok(await page.evaluate(() => window.__cameraStops) >= 1)
   await page.close()
 
   // Cancellation during an incomplete session preserves config and stops camera.
