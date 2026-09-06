@@ -22,6 +22,19 @@ function shuffle(items, seed = 0x12345678) {
   return items
 }
 
+function recoverOrdered(container) {
+  const sender = new OpticalSender(container, { sessionId: 0x11112222 })
+  const receiver = new OpticalReceiver()
+  for (let i = 0; i < sender.sourceBlocks * 8 + 64; i++) {
+    const result = receiver.addFrameBytes(sender.nextFrameBytes())
+    if (result.status === 'complete') {
+      assert.deepEqual(result.bytes, container)
+      return receiver
+    }
+  }
+  assert.fail('ordered fountain decoder did not complete')
+}
+
 function recoverWithLoss(container, lossPercent, { startAt = 0, duplicates = true } = {}) {
   const sender = new OpticalSender(container, { sessionId: 0x12345678 })
   for (let i = 0; i < startAt; i++) sender.nextFrameBytes()
@@ -76,7 +89,23 @@ test('container rejects corruption before configuration can be imported', async 
   await assert.rejects(() => unpackPayload(corrupt), /SHA-256/)
 })
 
-test('fountain recovers ordered, shuffled, duplicated and lost frames', async () => {
+test('bounded gzip decompression rejects expansion beyond the declared original length', async () => {
+  if (typeof CompressionStream === 'undefined' || typeof DecompressionStream === 'undefined') return
+  const bytes = enc.encode('compressible-data-'.repeat(20_000))
+  const packed = await packPayload(bytes)
+  assert.equal(packed.compression, 'gzip')
+  const forged = packed.container.slice()
+  const view = new DataView(forged.buffer)
+  view.setUint32(8, 1024, true)
+  await assert.rejects(() => unpackPayload(forged), /expands beyond|invalid length/)
+})
+
+test('fountain recovers frames received in their original order', async () => {
+  const packed = await packPayload(enc.encode(JSON.stringify(makeConfig(200, 30))), { compression: 'none' })
+  recoverOrdered(packed.container)
+})
+
+test('fountain recovers shuffled, duplicated, lost and mid-stream frames', async () => {
   const packed = await packPayload(enc.encode(JSON.stringify(makeConfig(250, 35))), { compression: 'none' })
   recoverWithLoss(packed.container, 0, { duplicates: false })
   recoverWithLoss(packed.container, 30)
@@ -116,6 +145,12 @@ test('PIBvMix validation is shared by file and optical imports', async () => {
   assert.deepEqual(await readConfigFile(file), config)
 })
 
+test('invalid JSON recovered from a valid optical container is rejected before config validation', async () => {
+  const packed = await packPayload(enc.encode('{"schemaVersion":2,"resources":['), { compression: 'none' })
+  const unpacked = await unpackPayload(packed.container)
+  assert.throws(() => JSON.parse(dec.decode(unpacked.bytes)), SyntaxError)
+})
+
 test('full optical smoke returns the exact configuration object', async () => {
   const original = makeConfig(700, 30)
   const packed = await packPayload(enc.encode(JSON.stringify(original)))
@@ -137,6 +172,31 @@ test('full optical smoke returns the exact configuration object', async () => {
   const unpacked = await unpackPayload(recovered)
   const decoded = validateConfig(JSON.parse(dec.decode(unpacked.bytes)))
   assert.deepEqual(decoded, JSON.parse(JSON.stringify(original)))
+})
+
+test('representative 1000-preset config reports practical transport metrics', async () => {
+  const titleSources = Array.from({ length: 10 }, (_, title) => ({
+    inputKey: `title-${title}`,
+    presets: Array.from({ length: 100 }, (_, presetIndex) => ({
+      presetIndex,
+      label: `Pessoa ${title}-${presetIndex}`,
+      csvRow: [`Nome ${presetIndex}`, `Cargo ${presetIndex}`, `imagem-${presetIndex}.jpg`, '#112233', 'Campo adicional de teste'],
+      verification: { mode: 'verifiedFields', fieldNames: ['Name.Text', 'Role.Text', 'Photo.Source', 'Accent.Color', 'Extra.Text'] },
+    })),
+  }))
+  const config = {
+    schemaVersion: 2,
+    vmix: { target: 'http://192.168.25.2:8088' },
+    titleSources,
+    resources: titleSources.flatMap((source) => source.presets.map((preset) => ({ id: `${source.inputKey}-${preset.presetIndex}`, type: 'titlePreset', inputKey: source.inputKey, presetIndex: preset.presetIndex, label: preset.label, csvRow: preset.csvRow, verification: preset.verification }))),
+  }
+  const bytes = enc.encode(JSON.stringify(config))
+  const packed = await packPayload(bytes)
+  const sender = new OpticalSender(packed.container, { sessionId: 123 })
+  assert.ok(bytes.length > 100_000)
+  assert.ok(packed.containerSize <= 2_000_128)
+  assert.ok(sender.sourceBlocks > 0)
+  console.log('OPTICAL 1000 preset metrics', { jsonBytes: bytes.length, transmittedBytes: packed.transmittedSize, compression: packed.compression, sourceBlocks: sender.sourceBlocks, conservativeSecondsAt8Fps: Math.ceil(sender.sourceBlocks * 1.5 / 8) })
 })
 
 test('representative 500 KB and 1 MB payloads remain stable under pack/unpack', async () => {
