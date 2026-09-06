@@ -14,4 +14,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm test
+      - name: Unit and emulator tests
+        run: npm test
+      - name: Browser module syntax
+        run: node --check src/app.js && node --check src/ui/configure.js && node --check src/ui/control.js
+      - name: Install Playwright Chromium
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install chromium
+      - name: Playwright repetition UI
+        run: |
+          python3 -m http.server 4173 > /tmp/pibvmix-http.log 2>&1 &
+          node tests/repetition-ui.playwright.mjs
