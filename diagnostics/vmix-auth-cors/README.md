@@ -14,15 +14,11 @@ No tablet, conecte-se à mesma LAN do vMix e desligue a VPN. Abra o endereço e 
 
 ## Execução e leitura
 
-Para testar sem cabo se o Chrome mostra um diálogo nativo, toque em **Abrir /api sem senha em nova aba**. Não digite senha: apenas observe se aparece um pedido de autenticação e feche a aba. Um diálogo nativo só deve aparecer se o vMix responder com `401` e `WWW-Authenticate: Basic`; se a página/XML abrir, não houve esse desafio. Esta navegação não usa CORS, mas também não consegue mostrar os headers do `OPTIONS`.
+1. Digite a senha do Web Controller no campo protegido. Não a envie por mensagem nem copie cabeçalhos Authorization.
+2. A página faz quatro leituras: sem credenciais, com a senha informada, com uma senha derivada incorreta e uma segunda leitura autenticada. A senha não vai para URL, armazenamento local, servidor do Pages ou resultados.
+3. Leia a conclusão exibida pela página.
 
-1. Abra DevTools → Network antes de tocar em **Executar bateria única**. Filtre por `192.168.25.2` e, se disponível, ative **Preserve log**.
-2. Digite a senha do Web Controller no campo protegido. Não a envie por mensagem nem copie cabeçalhos Authorization.
-3. A página faz quatro leituras: sem credenciais, com a senha informada, com uma senha derivada incorreta e uma segunda leitura autenticada. A senha não vai para URL, armazenamento local, servidor do Pages ou resultados.
-4. Registre a ordem e status de OPTIONS/GET, além de `Access-Control-Allow-Origin`, `Access-Control-Allow-Methods`, `Access-Control-Allow-Headers` e `WWW-Authenticate` no Network. Não exporte HAR.
-5. Feche a página quando terminar.
-
-Um `TypeError` no JavaScript sozinho não distingue CORS de bloqueio de rede local/conteúdo misto. Use Network/Console: se o navegador mostrar que a permissão local ou conteúdo misto bloqueou a chamada e não houver OPTIONS, a API não foi testada. Se OPTIONS chegar ao vMix e faltar permissão para `Authorization`, o navegador deve bloquear antes do GET autenticado. Com preflight aprovado, senha correta e incorreta distinguem sucesso HTTP de `401`.
+O teste é útil no tablet sem DevTools porque compara chamadas ao mesmo endereço, feitas na mesma rede e pela mesma página. Se a leitura simples retorna HTTP e todas as leituras com `Authorization` dão `TypeError`, a rede local já foi confirmada pela primeira leitura. `Authorization` é a única diferença relevante e exige um preflight CORS: para o PIBvMix, o resultado prático é que Basic Auth não pode ser usado browser-side nessa configuração. A página não tenta abrir `/api/` como navegação direta, pois isso não testa CORS.
 
 ## Estado das configurações vMix
 

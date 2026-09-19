@@ -25,12 +25,6 @@
   <p>Esta página usa a mesma origem HTTPS do PIBvMix no GitHub Pages e acessa o vMix diretamente. O usuário é fixo em <code>admin</code>. Nenhuma chamada altera o programa: todas apenas leem <code>/api/</code>.</p>
   <div class="notice"><strong>Acesso à rede local:</strong> Chrome/Edge pode pedir permissão para esta página acessar dispositivos da LAN. Essa autorização é separada da senha do vMix. Para o teste prosseguir, permita o acesso local. Se negar, registre o aviso do navegador; nenhuma requisição à API terá sido feita.</div>
   <section class="panel">
-    <h2>Teste de diálogo nativo do Chrome</h2>
-    <p>Toque no link para abrir a API diretamente em outra aba, sem enviar senha. Se o vMix responder com <code>401</code> e o desafio Basic Auth, o Chrome poderá mostrar o diálogo nativo. Se abrir XML ou outra resposta sem pedir senha, não houve desafio de autenticação nessa chamada. Não digite nem salve senha nesse teste; basta observar se o diálogo aparece e fechar a aba.</p>
-    <p><a href="http://192.168.25.2:8088/api/" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 16px;border-radius:8px;background:#1269e8;color:white;font-weight:700">Abrir /api sem senha em nova aba</a></p>
-    <p class="muted">Esta navegação não depende de CORS porque a resposta abre como página. Ela testa o diálogo do navegador, mas não revela os headers do preflight.</p>
-  </section>
-  <section class="panel">
     <p><strong>Origem da página:</strong> <code id="origin"></code></p>
     <p><strong>Destino:</strong> <code>http://192.168.25.2:8088/api/</code></p>
     <label for="password">Senha do Web Controller</label>
@@ -40,14 +34,16 @@
   </section>
   <section id="results" class="panel" hidden>
     <strong id="summary"></strong>
+    <p id="conclusion" class="muted"></p>
     <table><thead><tr><th>Chamada</th><th>Resposta do fetch</th><th>Access-Control-Allow-Origin</th><th>WWW-Authenticate</th></tr></thead><tbody id="rows"></tbody></table>
-    <p class="muted">O JavaScript não consegue ler a resposta de um preflight que o navegador bloqueou. Para registrar o OPTIONS e os headers completos, abra DevTools → Network antes de executar, filtre por <code>192.168.25.2</code> e inspecione OPTIONS/GET. Não exporte HAR nem copie Authorization.</p>
+    <p class="muted">O JavaScript não pode exibir os headers de um preflight bloqueado. A conclusão abaixo usa a comparação entre a leitura simples e as leituras que contêm <code>Authorization</code>: esse cabeçalho exige preflight CORS no navegador.</p>
   </section>
   <script>
     const passwordInput = document.querySelector('#password')
     const runButton = document.querySelector('#run')
     const resultPanel = document.querySelector('#results')
     const rows = document.querySelector('#rows')
+    const conclusion = document.querySelector('#conclusion')
     document.querySelector('#origin').textContent = location.origin
 
     function append(label, outcome) {
@@ -72,10 +68,10 @@
           allowOrigin: response.headers.get('Access-Control-Allow-Origin'),
           challenge: response.headers.get('WWW-Authenticate'),
         })
-        return response.status
+        return { status: response.status }
       } catch (error) {
         append(label, { status: null, result: `${error.name}: bloqueado ou indisponível` })
-        return null
+        return { status: null, error: error.name }
       }
     }
 
@@ -95,11 +91,22 @@
       resultPanel.hidden = false
       document.querySelector('#summary').textContent = 'Executando…'
       try {
-        await read('1. GET /api/ sem Authorization', null)
-        await read('2. GET /api/ com a senha informada', basic(password))
-        await read('3. GET /api/ com senha incorreta', basic(`${password}__senha_incorreta__`))
+        const anonymous = await read('1. GET /api/ sem Authorization', null)
+        const correct = await read('2. GET /api/ com a senha informada', basic(password))
+        const incorrect = await read('3. GET /api/ com senha incorreta', basic(`${password}__senha_incorreta__`))
         await read('4. Segunda leitura autenticada em /api/', basic(password))
-        document.querySelector('#summary').textContent = 'Bateria concluída. Consulte Network para distinguir preflight/CORS de respostas HTTP.'
+        document.querySelector('#summary').textContent = 'Bateria concluída.'
+        if (anonymous.status >= 200 && anonymous.status < 300 && correct.status === null && incorrect.status === null) {
+          conclusion.textContent = 'Conclusão: a rede local e a leitura CORS simples funcionam (HTTP ' + anonymous.status + '). O único acréscimo nas chamadas 2–4 é Authorization, que exige preflight CORS. Como ambas foram bloqueadas antes de uma resposta HTTP legível, esta configuração não permite autenticação Basic diretamente do PIBvMix no navegador. Será preciso liberar Authorization/OPTIONS no vMix ou usar um proxy/bridge.'
+        } else if (correct.status >= 200 && correct.status < 300 && incorrect.status === 401) {
+          conclusion.textContent = 'Conclusão: Basic Auth funciona diretamente nesta origem. A senha correta retornou sucesso e a incorreta retornou 401 com CORS permitindo a leitura da resposta.'
+        } else if (correct.status === 401) {
+          conclusion.textContent = 'Conclusão: o navegador conseguiu chegar à autenticação e ler a resposta 401. O CORS permite Authorization; revise a senha do Web Controller.'
+        } else if (anonymous.status === null) {
+          conclusion.textContent = 'Conclusão: a chamada simples também foi bloqueada. O problema ocorre antes da autenticação: verifique acesso à rede local, VPN, isolamento Wi-Fi e configurações de segurança do vMix.'
+        } else {
+          conclusion.textContent = 'Conclusão: o navegador recebeu respostas, mas o resultado não se encaixa no padrão automático. Registre os status exibidos; eles distinguem autenticação recusada de bloqueio antes da resposta.'
+        }
       } finally {
         passwordInput.value = ''
         runButton.disabled = false
