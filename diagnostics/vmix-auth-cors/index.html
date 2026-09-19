@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src http://192.168.25.2:8088; base-uri 'none'; form-action 'none'">
+  <title>Diagnóstico de autenticação do vMix</title>
+  <style>
+    :root{color-scheme:dark;font:16px system-ui,sans-serif;background:#0b111b;color:#eef4fc}
+    *{box-sizing:border-box}body{max-width:820px;margin:0 auto;padding:24px 16px 48px}
+    h1{font-size:1.55rem;margin:0 0 8px}p{line-height:1.55;color:#becbdd}
+    .notice,.panel{border:1px solid #31435b;border-radius:12px;background:#111c2b;padding:16px;margin:16px 0}
+    .notice{border-color:#7f6127;background:#2a2112;color:#ffdda1}
+    label{display:block;font-weight:650;margin:14px 0 6px}input{width:100%;padding:12px;border:1px solid #506783;border-radius:8px;background:#080d14;color:white;font:inherit}
+    button{min-height:46px;padding:10px 16px;border:1px solid #337fe0;border-radius:8px;background:#1269e8;color:white;font:inherit;font-weight:700;cursor:pointer}
+    button:disabled{opacity:.55;cursor:wait}.muted{font-size:.9rem;color:#9eb0c5}
+    table{border-collapse:collapse;width:100%;margin-top:14px;font-size:.92rem}th,td{text-align:left;vertical-align:top;padding:9px 7px;border-bottom:1px solid #31435b}th{color:#bcd7f5}
+    .pass{color:#75e7a2}.fail{color:#ff9b9b}.pending{color:#ffd479}
+    [hidden]{display:none!important}
+  </style>
+</head>
+<body>
+  <h1>Diagnóstico de Basic Auth/CORS do vMix</h1>
+  <p>Esta página usa a mesma origem HTTPS do PIBvMix no GitHub Pages e acessa o vMix diretamente. O usuário é fixo em <code>admin</code>. Nenhuma chamada altera o programa: todas apenas leem <code>/api/</code>.</p>
+  <div class="notice"><strong>Acesso à rede local:</strong> Chrome/Edge pode pedir permissão para esta página acessar dispositivos da LAN. Essa autorização é separada da senha do vMix. Para o teste prosseguir, permita o acesso local. Se negar, registre o aviso do navegador; nenhuma requisição à API terá sido feita.</div>
+  <section class="panel">
+    <p><strong>Origem da página:</strong> <code id="origin"></code></p>
+    <p><strong>Destino:</strong> <code>http://192.168.25.2:8088/api/</code></p>
+    <label for="password">Senha do Web Controller</label>
+    <input id="password" type="password" autocomplete="current-password" spellcheck="false">
+    <p class="muted">Digite a senha apenas ao executar. A página não a grava, inclui em URL ou log. Ela envia a senha correta e uma variação incorreta diretamente à API, somente em memória. Não compartilhe os valores de Authorization vistos no DevTools.</p>
+    <button id="run" type="button">Executar bateria única</button>
+  </section>
+  <section id="results" class="panel" hidden>
+    <strong id="summary"></strong>
+    <table><thead><tr><th>Chamada</th><th>Resposta do fetch</th><th>Access-Control-Allow-Origin</th><th>WWW-Authenticate</th></tr></thead><tbody id="rows"></tbody></table>
+    <p class="muted">O JavaScript não consegue ler a resposta de um preflight que o navegador bloqueou. Para registrar o OPTIONS e os headers completos, abra DevTools → Network antes de executar, filtre por <code>192.168.25.2</code> e inspecione OPTIONS/GET. Não exporte HAR nem copie Authorization.</p>
+  </section>
+  <script>
+    const passwordInput = document.querySelector('#password')
+    const runButton = document.querySelector('#run')
+    const resultPanel = document.querySelector('#results')
+    const rows = document.querySelector('#rows')
+    document.querySelector('#origin').textContent = location.origin
+
+    function append(label, outcome) {
+      const row = document.createElement('tr')
+      for (const value of [label, outcome.result, outcome.allowOrigin || 'não acessível ao JavaScript', outcome.challenge || 'não acessível ao JavaScript']) {
+        const cell = document.createElement('td')
+        cell.textContent = value
+        row.append(cell)
+      }
+      const resultCell = row.children[1]
+      resultCell.className = outcome.status === 200 ? 'pass' : outcome.status === 401 ? 'pending' : 'fail'
+      rows.append(row)
+    }
+
+    async function read(label, authorization) {
+      try {
+        const headers = authorization ? { Authorization: authorization } : undefined
+        const response = await fetch('http://192.168.25.2:8088/api/', { method: 'GET', headers, cache: 'no-store', redirect: 'error' })
+        append(label, {
+          status: response.status,
+          result: `HTTP ${response.status}`,
+          allowOrigin: response.headers.get('Access-Control-Allow-Origin'),
+          challenge: response.headers.get('WWW-Authenticate'),
+        })
+        return response.status
+      } catch (error) {
+        append(label, { status: null, result: `${error.name}: bloqueado ou indisponível` })
+        return null
+      }
+    }
+
+    function basic(password) {
+      const bytes = new TextEncoder().encode(`admin:${password}`)
+      let binary = ''
+      for (const byte of bytes) binary += String.fromCharCode(byte)
+      return `Basic ${btoa(binary)}`
+    }
+
+    runButton.addEventListener('click', async () => {
+      const password = passwordInput.value
+      if (!password) { passwordInput.focus(); return }
+      passwordInput.value = ''
+      runButton.disabled = true
+      rows.replaceChildren()
+      resultPanel.hidden = false
+      document.querySelector('#summary').textContent = 'Executando…'
+      try {
+        await read('1. GET /api/ sem Authorization', null)
+        await read('2. GET /api/ com a senha informada', basic(password))
+        await read('3. GET /api/ com senha incorreta', basic(`${password}__senha_incorreta__`))
+        await read('4. Segunda leitura autenticada em /api/', basic(password))
+        document.querySelector('#summary').textContent = 'Bateria concluída. Consulte Network para distinguir preflight/CORS de respostas HTTP.'
+      } finally {
+        passwordInput.value = ''
+        runButton.disabled = false
+      }
+    })
+  </script>
+</body>
+</html>
