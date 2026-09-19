@@ -35,8 +35,9 @@
   <section id="results" class="panel" hidden>
     <strong id="summary"></strong>
     <p id="conclusion" class="muted"></p>
-    <table><thead><tr><th>Chamada</th><th>Resposta do fetch</th><th>Access-Control-Allow-Origin</th><th>WWW-Authenticate</th></tr></thead><tbody id="rows"></tbody></table>
+    <table><thead><tr><th>Chamada</th><th>Resposta do fetch</th><th>Modo</th><th>Duração</th><th>Access-Control-Allow-Origin</th><th>WWW-Authenticate</th></tr></thead><tbody id="rows"></tbody></table>
     <p class="muted">O JavaScript não pode exibir os headers de um preflight bloqueado. A conclusão abaixo usa a comparação entre a leitura simples e as leituras que contêm <code>Authorization</code>: esse cabeçalho exige preflight CORS no navegador.</p>
+    <details><summary>Detalhes técnicos seguros para captura</summary><pre id="details" class="muted"></pre></details>
   </section>
   <script>
     const passwordInput = document.querySelector('#password')
@@ -44,11 +45,12 @@
     const resultPanel = document.querySelector('#results')
     const rows = document.querySelector('#rows')
     const conclusion = document.querySelector('#conclusion')
+    const details = document.querySelector('#details')
     document.querySelector('#origin').textContent = location.origin
 
     function append(label, outcome) {
       const row = document.createElement('tr')
-      for (const value of [label, outcome.result, outcome.allowOrigin || 'não acessível ao JavaScript', outcome.challenge || 'não acessível ao JavaScript']) {
+      for (const value of [label, outcome.result, outcome.type || '—', outcome.duration ? `${outcome.duration} ms` : '—', outcome.allowOrigin || 'não acessível ao JavaScript', outcome.challenge || 'não acessível ao JavaScript']) {
         const cell = document.createElement('td')
         cell.textContent = value
         row.append(cell)
@@ -59,19 +61,23 @@
     }
 
     async function read(label, authorization) {
+      const startedAt = performance.now()
       try {
         const headers = authorization ? { Authorization: authorization } : undefined
         const response = await fetch('http://192.168.25.2:8088/api/', { method: 'GET', headers, cache: 'no-store', redirect: 'error' })
         append(label, {
           status: response.status,
           result: `HTTP ${response.status}`,
+          type: response.type,
+          duration: Math.round(performance.now() - startedAt),
           allowOrigin: response.headers.get('Access-Control-Allow-Origin'),
           challenge: response.headers.get('WWW-Authenticate'),
         })
-        return { status: response.status }
+        return { status: response.status, type: response.type, duration: Math.round(performance.now() - startedAt) }
       } catch (error) {
-        append(label, { status: null, result: `${error.name}: bloqueado ou indisponível` })
-        return { status: null, error: error.name }
+        const duration = Math.round(performance.now() - startedAt)
+        append(label, { status: null, result: `${error.name}: ${error.message || 'bloqueado ou indisponível'}`, duration })
+        return { status: null, error: error.name, message: error.message || '', duration }
       }
     }
 
@@ -94,7 +100,7 @@
         const anonymous = await read('1. GET /api/ sem Authorization', null)
         const correct = await read('2. GET /api/ com a senha informada', basic(password))
         const incorrect = await read('3. GET /api/ com senha incorreta', basic(`${password}__senha_incorreta__`))
-        await read('4. Segunda leitura autenticada em /api/', basic(password))
+        const secondCorrect = await read('4. Segunda leitura autenticada em /api/', basic(password))
         document.querySelector('#summary').textContent = 'Bateria concluída.'
         if (anonymous.status >= 200 && anonymous.status < 300 && correct.status === null && incorrect.status === null) {
           conclusion.textContent = 'Conclusão: a rede local e a leitura CORS simples funcionam (HTTP ' + anonymous.status + '). O único acréscimo nas chamadas 2–4 é Authorization, que exige preflight CORS. Como ambas foram bloqueadas antes de uma resposta HTTP legível, esta configuração não permite autenticação Basic diretamente do PIBvMix no navegador. Será preciso liberar Authorization/OPTIONS no vMix ou usar um proxy/bridge.'
@@ -107,6 +113,20 @@
         } else {
           conclusion.textContent = 'Conclusão: o navegador recebeu respostas, mas o resultado não se encaixa no padrão automático. Registre os status exibidos; eles distinguem autenticação recusada de bloqueio antes da resposta.'
         }
+        details.textContent = JSON.stringify({
+          generatedAt: new Date().toISOString(),
+          pageOrigin: location.origin,
+          apiOrigin: 'http://192.168.25.2:8088',
+          secureContext: window.isSecureContext,
+          browser: navigator.userAgent,
+          calls: {
+            noAuthorization: anonymous,
+            correctAuthorization: correct,
+            incorrectAuthorization: incorrect,
+            secondCorrectAuthorization: secondCorrect,
+          },
+          note: 'Nenhuma senha ou valor de Authorization é incluído neste relatório.'
+        }, null, 2)
       } finally {
         passwordInput.value = ''
         runButton.disabled = false
