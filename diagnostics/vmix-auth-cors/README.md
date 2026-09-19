@@ -14,6 +14,8 @@ No tablet, conecte-se à mesma LAN do vMix e desligue a VPN. Abra o endereço e 
 
 ## Execução e leitura
 
+Para testar sem cabo se o Chrome mostra um diálogo nativo, toque em **Abrir /api sem senha em nova aba**. Não digite senha: apenas observe se aparece um pedido de autenticação e feche a aba. Um diálogo nativo só deve aparecer se o vMix responder com `401` e `WWW-Authenticate: Basic`; se a página/XML abrir, não houve esse desafio. Esta navegação não usa CORS, mas também não consegue mostrar os headers do `OPTIONS`.
+
 1. Abra DevTools → Network antes de tocar em **Executar bateria única**. Filtre por `192.168.25.2` e, se disponível, ative **Preserve log**.
 2. Digite a senha do Web Controller no campo protegido. Não a envie por mensagem nem copie cabeçalhos Authorization.
 3. A página faz quatro leituras: sem credenciais, com a senha informada, com uma senha derivada incorreta e uma segunda leitura autenticada. A senha não vai para URL, armazenamento local, servidor do Pages ou resultados.

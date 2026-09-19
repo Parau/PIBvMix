@@ -25,6 +25,12 @@
   <p>Esta página usa a mesma origem HTTPS do PIBvMix no GitHub Pages e acessa o vMix diretamente. O usuário é fixo em <code>admin</code>. Nenhuma chamada altera o programa: todas apenas leem <code>/api/</code>.</p>
   <div class="notice"><strong>Acesso à rede local:</strong> Chrome/Edge pode pedir permissão para esta página acessar dispositivos da LAN. Essa autorização é separada da senha do vMix. Para o teste prosseguir, permita o acesso local. Se negar, registre o aviso do navegador; nenhuma requisição à API terá sido feita.</div>
   <section class="panel">
+    <h2>Teste de diálogo nativo do Chrome</h2>
+    <p>Toque no link para abrir a API diretamente em outra aba, sem enviar senha. Se o vMix responder com <code>401</code> e o desafio Basic Auth, o Chrome poderá mostrar o diálogo nativo. Se abrir XML ou outra resposta sem pedir senha, não houve desafio de autenticação nessa chamada. Não digite nem salve senha nesse teste; basta observar se o diálogo aparece e fechar a aba.</p>
+    <p><a href="http://192.168.25.2:8088/api/" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 16px;border-radius:8px;background:#1269e8;color:white;font-weight:700">Abrir /api sem senha em nova aba</a></p>
+    <p class="muted">Esta navegação não depende de CORS porque a resposta abre como página. Ela testa o diálogo do navegador, mas não revela os headers do preflight.</p>
+  </section>
+  <section class="panel">
     <p><strong>Origem da página:</strong> <code id="origin"></code></p>
     <p><strong>Destino:</strong> <code>http://192.168.25.2:8088/api/</code></p>
     <label for="password">Senha do Web Controller</label>
