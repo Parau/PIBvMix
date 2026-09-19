@@ -6,6 +6,35 @@ const e = (s) => String(s ?? '').replace(/[&<>'"]/g, (c) => ({'&':'&amp;','<':'&
 const appVersion = document.querySelector('meta[name="pibvmix-version"]')?.content || ''
 let lastTitleDiagnosticsFingerprint = ''
 
+// Local display preferences never enter the resource configuration or its exports.
+const viewStorageKey = 'pibvmix:ui:control-view'
+const viewOptions = {
+  columns: { label: 'Colunas', values: { auto: 'Auto', 1: '1', 2: '2', 3: '3' } },
+  size: { label: 'Tamanho', values: { compact: 'Compacto', normal: 'Normal', large: 'Grande' } },
+  text: { label: 'Texto', values: { single: '1 linha', double: '2 linhas', full: 'Completo' } },
+}
+let viewPreferences = { columns: 'auto', size: 'normal', text: 'single' }
+try {
+  const saved = JSON.parse(localStorage.getItem(viewStorageKey))
+  for (const key of Object.keys(viewOptions)) {
+    if (Object.hasOwn(viewOptions[key].values, saved?.[key])) viewPreferences[key] = String(saved[key])
+  }
+} catch { /* Keep defaults when storage is unavailable or malformed. */ }
+
+function viewControls() {
+  return Object.entries(viewOptions).map(([key, option]) => `<div class="control-view-group" role="group" aria-label="${option.label}"><span>${option.label}</span><div class="segmented compact">${Object.entries(option.values).sort(([a], [b]) => a === 'auto' ? -1 : b === 'auto' ? 1 : 0).map(([value, label]) => `<button type="button" data-view-option="${key}" data-view-value="${value}" aria-pressed="${viewPreferences[key] === value}" class="${viewPreferences[key] === value ? 'active' : ''}">${label}</button>`).join('')}</div></div>`).join('')
+}
+
+function applyView(root) {
+  const main = root.querySelector('.control-main')
+  for (const [key, value] of Object.entries(viewPreferences)) main.dataset[key] = value
+  root.querySelectorAll('[data-view-option]').forEach((button) => {
+    const selected = viewPreferences[button.dataset.viewOption] === button.dataset.viewValue
+    button.classList.toggle('active', selected)
+    button.setAttribute('aria-pressed', String(selected))
+  })
+}
+
 function logTitleDiagnostics(vmix, titleGroups, titleResolution, titleSwapContext, onAir) {
   if (!vmix) return
   const diagnostics = [...titleGroups].map(([key, group]) => {
@@ -84,10 +113,11 @@ export function renderControl(root, ctx) {
     <div class="topbar-spacer"></div><button class="btn primary" data-action="configure" title="Return to resource setup. Your current palette is preserved.">← Edit resources</button>
   </header>
   <main class="control-main">
-    <section class="control-tools"><div class="search-row control-search"><span>${icon('search')}</span><input id="control-search" value="${e(state.ui.query)}" placeholder="Find a resource fast…"></div><div class="segmented compact">${['all','titles','video','image'].map((f)=>`<button data-filter="${f}" class="${filter===f?'active':''}">${f[0].toUpperCase()+f.slice(1)}</button>`).join('')}</div></section>
+    <section class="control-tools" aria-label="Resource tools"><div class="control-find"><div class="search-row control-search"><span>${icon('search')}</span><input id="control-search" value="${e(state.ui.query)}" placeholder="Find a resource fast…"></div><div class="segmented compact">${['all','titles','video','image'].map((f)=>`<button data-filter="${f}" class="${filter===f?'active':''}">${f[0].toUpperCase()+f.slice(1)}</button>`).join('')}</div></div><div class="control-view-options">${viewControls()}</div></section>
     ${!vmix ? `<div class="control-empty"><div class="spinner"></div><strong>${state.connection.status === 'disconnected' ? 'vMix disconnected' : 'Loading vMix state…'}</strong><span>Resource controls stay disabled until a valid live state is known.</span></div>` : `<section class="resource-grid">${visible.map((r) => card(r, vmix, onAir, state, titleResolution, titleSwapContext)).join('')}</section>`}
   </main>
   ${state.ui.toast ? `<div class="toast ${e(state.ui.toast.kind || '')}">${e(state.ui.toast.message)}</div>` : ''}`
+  applyView(root)
   bind(root, ctx)
 }
 
@@ -133,6 +163,11 @@ function card(r, vmix, onAir, state, titleResolution, titleSwapContext) {
 }
 
 function bind(root, ctx) {
+  root.querySelectorAll('[data-view-option]').forEach((button) => button.addEventListener('click', () => {
+    viewPreferences[button.dataset.viewOption] = button.dataset.viewValue
+    try { localStorage.setItem(viewStorageKey, JSON.stringify(viewPreferences)) } catch { /* Retain in memory for rerenders. */ }
+    applyView(root)
+  }))
   root.querySelector('[data-action="configure"]')?.addEventListener('click', ctx.actions.toConfigure)
   root.querySelector('#control-search')?.addEventListener('input', (ev) => ctx.actions.setQuery(ev.target.value))
   root.querySelectorAll('[data-filter]').forEach((x) => x.addEventListener('click', () => ctx.actions.setFilter(x.dataset.filter)))

@@ -39,3 +39,4 @@ jobs:
           python3 -m http.server 4173 > /tmp/pibvmix-http.log 2>&1 &
           node tests/repetition-ui.playwright.mjs
           node tests/optical-ui.playwright.mjs
+          node tests/control-view.playwright.mjs

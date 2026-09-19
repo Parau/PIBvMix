@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="pibvmix-version" content="0.3.6">
+  <link rel="stylesheet" href="../src/styles/app.css?v=0.3.6">
+  <link rel="stylesheet" href="../src/styles/swap.css?v=0.3.6">
+  <link rel="stylesheet" href="../src/styles/version.css?v=0.3.6">
+  <title>Control view regression fixture</title>
+</head>
+<body>
+  <div id="app" class="app-shell"></div>
+  <script type="module">
+    import { renderControl } from '../src/ui/control.js?v=0.3.6'
+    import { MockVmixClient } from '../src/vmix/mock.js'
+    import { parseVmixXml } from '../src/vmix/parser.js'
+    const client = new MockVmixClient()
+    const state = {
+      connection: { status: 'connected' },
+      ui: { query: '', filter: 'all', busyInputKeys: [], toast: null },
+      config: { resources: Array.from({ length: 36 }, (_, i) => ({
+        id: `long-${i}`, type: 'input', inputKey: 'video-1',
+        label: `${i + 1}. Apresentação especial da comunidade — nome completo do participante, equipe responsável e informações adicionais para operação segura. `.repeat(3),
+      })) },
+      vmixState: parseVmixXml(await client.fetchState()),
+    }
+    window.fixtureConfig = state.config
+    window.calls = []
+    const render = () => renderControl(document.querySelector('#app'), { state, actions })
+    const actions = {
+      toConfigure() {},
+      setQuery(value) { state.ui.query = value; render() },
+      setFilter(value) { state.ui.filter = value; render() },
+      sendResource(id) { window.calls.push(['send', id]); state.vmixState.mainMix.previewKey = 'video-1'; render() },
+      swapResource(id) { window.calls.push(['swap', id]) },
+    }
+    window.rerender = render
+    render()
+  </script>
+</body>
+</html>

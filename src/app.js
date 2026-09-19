@@ -8,7 +8,7 @@ import { isResourceFullyVerifiable, resolveTitleResource, sameTitlePreset, verif
 import { loadConfig, saveConfig } from './config/storage.js?v=0.2.0'
 import { downloadConfig, readConfigFile } from './config/backup.js?v=0.2.0'
 import { renderConfigure } from './ui/configure.js?v=0.3.4'
-import { renderControl } from './ui/control.js?v=0.3.4'
+import { renderControl } from './ui/control.js?v=0.3.6'
 
 const saved = loadConfig()
 const store = createStore({ ...initialState, config: saved || initialState.config })
