@@ -13,12 +13,13 @@ const viewOptions = {
   size: { label: 'Tamanho', values: { compact: 'Compacto', normal: 'Normal', large: 'Grande' } },
   text: { label: 'Texto', values: { single: '1 linha', double: '2 linhas', full: 'Completo' } },
 }
-let viewPreferences = { columns: 'auto', size: 'normal', text: 'single' }
+let viewPreferences = { columns: 'auto', size: 'normal', text: 'single', chrome: 'expanded' }
 try {
   const saved = JSON.parse(localStorage.getItem(viewStorageKey))
   for (const key of Object.keys(viewOptions)) {
     if (Object.hasOwn(viewOptions[key].values, saved?.[key])) viewPreferences[key] = String(saved[key])
   }
+  if (saved?.chrome === 'collapsed') viewPreferences.chrome = 'collapsed'
 } catch { /* Keep defaults when storage is unavailable or malformed. */ }
 
 function viewControls() {
@@ -27,12 +28,29 @@ function viewControls() {
 
 function applyView(root) {
   const main = root.querySelector('.control-main')
-  for (const [key, value] of Object.entries(viewPreferences)) main.dataset[key] = value
+  for (const key of Object.keys(viewOptions)) main.dataset[key] = viewPreferences[key]
   root.querySelectorAll('[data-view-option]').forEach((button) => {
     const selected = viewPreferences[button.dataset.viewOption] === button.dataset.viewValue
     button.classList.toggle('active', selected)
     button.setAttribute('aria-pressed', String(selected))
   })
+}
+
+function applyChrome(root) {
+  const collapsed = viewPreferences.chrome === 'collapsed'
+  root.dataset.controlChrome = viewPreferences.chrome
+  const button = root.querySelector('[data-action="toggle-chrome"]')
+  button?.setAttribute('aria-expanded', String(!collapsed))
+  button?.setAttribute('aria-label', collapsed ? 'Mostrar controles da tela' : 'Ocultar controles da tela')
+  button?.setAttribute('title', collapsed ? 'Mostrar controles da tela' : 'Ocultar controles da tela')
+  const label = button?.querySelector('.chrome-toggle-label')
+  if (label) label.textContent = collapsed ? 'Expandir' : 'Recolher'
+  const icon = button?.querySelector('.chrome-toggle-icon')
+  if (icon) icon.textContent = collapsed ? '▾' : '▴'
+}
+
+function saveViewPreferences() {
+  try { localStorage.setItem(viewStorageKey, JSON.stringify(viewPreferences)) } catch { /* Retain in memory for rerenders. */ }
 }
 
 function logTitleDiagnostics(vmix, titleGroups, titleResolution, titleSwapContext, onAir) {
@@ -108,9 +126,10 @@ export function renderControl(root, ctx) {
   })
 
   root.innerHTML = `<header class="topbar control-topbar">
-    <div class="brand"><span class="brand-mark">◆</span><strong>PIBvMix</strong>${appVersion ? `<small class="brand-version">v${e(appVersion)}</small>` : ''}</div>
-    <div class="connection-chip ${e(state.connection.status)}"><span class="dot"></span>${e(state.connection.status === 'connected' ? (state.ui.demo ? 'Demo connected' : 'Connected') : state.connection.status)}</div>
-    <div class="topbar-spacer"></div><button class="btn primary" data-action="configure" title="Return to resource setup. Your current palette is preserved.">← Edit resources</button>
+    <div class="brand control-expanded-only"><span class="brand-mark">◆</span><strong>PIBvMix</strong>${appVersion ? `<small class="brand-version">v${e(appVersion)}</small>` : ''}</div>
+    <div class="connection-chip ${e(state.connection.status)}"><span class="dot"></span><span class="connection-label control-expanded-only">${e(state.connection.status === 'connected' ? (state.ui.demo ? 'Demo connected' : 'Connected') : state.connection.status)}</span></div>
+    <button class="chrome-toggle" type="button" data-action="toggle-chrome"><span class="chrome-toggle-icon" aria-hidden="true"></span><span class="chrome-toggle-label"></span></button>
+    <div class="topbar-spacer"></div><button class="btn primary control-expanded-only" data-action="configure" title="Return to resource setup. Your current palette is preserved.">← Edit resources</button>
   </header>
   <main class="control-main">
     <section class="control-tools" aria-label="Resource tools"><div class="control-find"><div class="search-row control-search"><span>${icon('search')}</span><input id="control-search" value="${e(state.ui.query)}" placeholder="Find a resource fast…"></div><div class="segmented compact">${['all','titles','video','image'].map((f)=>`<button data-filter="${f}" class="${filter===f?'active':''}">${f[0].toUpperCase()+f.slice(1)}</button>`).join('')}</div></div><div class="control-view-options">${viewControls()}</div></section>
@@ -118,6 +137,7 @@ export function renderControl(root, ctx) {
   </main>
   ${state.ui.toast ? `<div class="toast ${e(state.ui.toast.kind || '')}">${e(state.ui.toast.message)}</div>` : ''}`
   applyView(root)
+  applyChrome(root)
   bind(root, ctx)
 }
 
@@ -165,9 +185,14 @@ function card(r, vmix, onAir, state, titleResolution, titleSwapContext) {
 function bind(root, ctx) {
   root.querySelectorAll('[data-view-option]').forEach((button) => button.addEventListener('click', () => {
     viewPreferences[button.dataset.viewOption] = button.dataset.viewValue
-    try { localStorage.setItem(viewStorageKey, JSON.stringify(viewPreferences)) } catch { /* Retain in memory for rerenders. */ }
+    saveViewPreferences()
     applyView(root)
   }))
+  root.querySelector('[data-action="toggle-chrome"]')?.addEventListener('click', () => {
+    viewPreferences.chrome = viewPreferences.chrome === 'collapsed' ? 'expanded' : 'collapsed'
+    saveViewPreferences()
+    applyChrome(root)
+  })
   root.querySelector('[data-action="configure"]')?.addEventListener('click', ctx.actions.toConfigure)
   root.querySelector('#control-search')?.addEventListener('input', (ev) => ctx.actions.setQuery(ev.target.value))
   root.querySelectorAll('[data-filter]').forEach((x) => x.addEventListener('click', () => ctx.actions.setFilter(x.dataset.filter)))

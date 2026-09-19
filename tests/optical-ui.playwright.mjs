@@ -53,7 +53,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
   await page.addInitScript(initScript, { config: originalConfig, frames: incomingFrames })
   await page.goto('http://127.0.0.1:4173/', { waitUntil: 'networkidle' })
-  assert.equal(await page.locator('.brand-version').textContent(), 'v0.3.6')
+  assert.equal(await page.locator('.brand-version').textContent(), 'v0.3.7')
 
   await page.getByText('Export ▾', { exact: true }).click()
   assert.ok(await page.locator('.backup-menu').first().getByText('Arquivo', { exact: true }).count())

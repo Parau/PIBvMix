@@ -17,6 +17,7 @@ after(async () => { await browser?.close() })
 const choose = (option, value) => page.locator(`[data-view-option="${option}"][data-view-value="${value}"]`).click()
 const columns = () => page.locator('.resource-grid').evaluate((node) => getComputedStyle(node).gridTemplateColumns.split(' ').length)
 const viewport = (width) => page.setViewportSize({ width, height: 900 })
+const chromeToggle = () => page.locator('[data-action="toggle-chrome"]')
 const textMetrics = () => page.locator('.resource-copy strong').first().evaluate((node) => {
   const style = getComputedStyle(node)
   return { whiteSpace: style.whiteSpace, clamp: style.webkitLineClamp, height: node.getBoundingClientRect().height,
@@ -24,8 +25,39 @@ const textMetrics = () => page.locator('.resource-copy strong').first().evaluate
     clientHeight: node.clientHeight, scrollHeight: node.scrollHeight }
 })
 
-test('visible version is v0.3.6', async () => {
-  assert.equal(await page.locator('.brand-version').textContent(), 'v0.3.6')
+test('visible version is v0.3.7 and Control starts expanded', async () => {
+  assert.equal(await page.locator('.brand-version').textContent(), 'v0.3.7')
+  assert.equal(await page.locator('.control-tools').count(), 1)
+  assert.ok(await page.locator('.control-tools').isVisible())
+  assert.equal(await chromeToggle().getAttribute('aria-expanded'), 'true')
+  assert.equal(await chromeToggle().getAttribute('aria-label'), 'Ocultar controles da tela')
+})
+test('collapsed chrome removes toolbar space and remains accessible at every viewport', async () => {
+  await viewport(800)
+  const expandedHeader = await page.locator('.control-topbar').boundingBox()
+  const expandedCard = await page.locator('.resource-card').first().boundingBox()
+  await page.screenshot({ path: 'control-view-tablet-expanded.png' })
+  await chromeToggle().click()
+  const collapsedHeader = await page.locator('.control-topbar').boundingBox()
+  const collapsedCard = await page.locator('.resource-card').first().boundingBox()
+  assert.equal(await page.locator('.control-tools').evaluate((node) => getComputedStyle(node).display), 'none')
+  assert.ok(collapsedHeader.height <= 40 && collapsedHeader.height < expandedHeader.height)
+  assert.ok(collapsedCard.y < expandedCard.y - 100, `card moved from ${expandedCard.y} to ${collapsedCard.y}`)
+  assert.ok(collapsedCard.y >= collapsedHeader.y + collapsedHeader.height, 'first card is not under topbar')
+  assert.ok(collapsedCard.y - (collapsedHeader.y + collapsedHeader.height) <= 5, 'no phantom topbar/toolbar offset')
+  assert.equal(await chromeToggle().getAttribute('aria-expanded'), 'false')
+  await page.screenshot({ path: 'control-view-tablet-collapsed.png' })
+  for (const width of [1280, 800, 390]) {
+    await viewport(width)
+    assert.ok(await chromeToggle().isVisible(), `toggle visible at ${width}px`)
+    const box = await chromeToggle().boundingBox()
+    assert.ok(box.x >= 0 && box.x + box.width <= width, `toggle fits at ${width}px`)
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `no overflow at ${width}px`)
+  }
+  await viewport(390); await page.screenshot({ path: 'control-view-phone-collapsed.png' })
+  await chromeToggle().click()
+  assert.ok(await page.locator('.control-tools').isVisible())
+  assert.equal(await chromeToggle().getAttribute('aria-expanded'), 'true')
 })
 for (const [width, expected] of [[1280, 3], [1050, 2], [800, 2], [681, 2], [680, 1], [390, 1]]) {
   test(`Auto at ${width}px uses ${expected} columns`, async () => {
@@ -42,14 +74,19 @@ for (const count of [1, 2, 3]) {
     }
   })
 }
-test('preferences survive rerender and reload, without changing configuration', async () => {
+test('view and collapsed chrome preferences survive rerender and reload, without changing configuration', async () => {
   await viewport(800)
   const before = await page.evaluate(() => JSON.stringify(window.fixtureConfig))
   await choose('columns', '1'); await choose('size', 'large'); await choose('text', 'full')
+  await chromeToggle().click()
   await page.evaluate(() => window.rerender())
   assert.equal(await page.evaluate(() => JSON.stringify(window.fixtureConfig)), before)
+  assert.equal(await chromeToggle().getAttribute('aria-expanded'), 'false')
+  assert.equal(await page.locator('.control-tools').evaluate((node) => getComputedStyle(node).display), 'none')
   await page.reload(); await page.locator('.resource-card').first().waitFor()
-  assert.deepEqual(await page.evaluate((key) => JSON.parse(localStorage.getItem(key)), key), { columns: '1', size: 'large', text: 'full' })
+  assert.deepEqual(await page.evaluate((key) => JSON.parse(localStorage.getItem(key)), key), { columns: '1', size: 'large', text: 'full', chrome: 'collapsed' })
+  assert.equal(await chromeToggle().getAttribute('aria-expanded'), 'false')
+  await chromeToggle().click()
   for (const [option, value] of [['columns', '1'], ['size', 'large'], ['text', 'full']]) {
     assert.equal(await page.locator(`[data-view-option="${option}"][data-view-value="${value}"]`).getAttribute('aria-pressed'), 'true')
   }
@@ -124,7 +161,7 @@ test('grid uses row-major DOM order', async () => {
 test('production app sends resource and updates PREVIEW after changing view', async () => {
   await page.goto(`${base}/?demo=1`)
   await page.locator('.connection-chip.connected').waitFor()
-  assert.equal(await page.locator('.brand-version').textContent(), 'v0.3.6')
+  assert.equal(await page.locator('.brand-version').textContent(), 'v0.3.7')
   await page.getByRole('button', { name: 'Go to Control →' }).click()
   await choose('columns', '1'); await choose('text', 'full')
   await page.locator('.resource-card').filter({ hasText: 'Opening Video' }).click()

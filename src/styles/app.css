@@ -9,6 +9,16 @@
 .control-view-group .segmented{gap:4px}
 .control-view-group button{min-height:44px;min-width:44px;padding:8px 10px}
 .control-view-group button:focus-visible{outline:2px solid #86bcff;outline-offset:2px}
+.chrome-toggle{min-height:44px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:8px 11px;border:1px solid var(--line);border-radius:9px;background:#121c2a;color:var(--text);font-size:12px;cursor:pointer;white-space:nowrap}
+.chrome-toggle:hover{border-color:#3b526f}
+.chrome-toggle:focus-visible{outline:2px solid #86bcff;outline-offset:2px}
+.chrome-toggle-icon{font-size:14px;color:#86bcff}
+.app-shell[data-control-chrome="collapsed"] .control-topbar{height:40px;min-height:40px;padding:0 14px;gap:8px}
+.app-shell[data-control-chrome="collapsed"] .control-expanded-only,.app-shell[data-control-chrome="collapsed"] .control-tools{display:none}
+.app-shell[data-control-chrome="collapsed"] .control-topbar .connection-chip{order:3;padding:0;border:0;background:none}
+.app-shell[data-control-chrome="collapsed"] .control-topbar .connection-chip .dot{width:8px;height:8px}
+.app-shell[data-control-chrome="collapsed"] .chrome-toggle{min-height:36px;padding:6px 12px}
+.app-shell[data-control-chrome="collapsed"] .control-main{padding-top:4px}
 .control-main{--card-height:92px;--card-padding:14px;--card-gap:14px;--card-icon:50px;--card-font:16px}
 .control-main[data-size="compact"]{--card-height:80px;--card-padding:10px;--card-gap:10px;--card-icon:42px;--card-font:15px}
 .control-main[data-size="large"]{--card-height:108px;--card-padding:18px;--card-gap:18px;--card-icon:58px;--card-font:18px}
@@ -36,5 +46,10 @@
   .control-topbar{gap:8px}
   .control-topbar .topbar-spacer{display:none}
   .control-topbar .brand{gap:6px}
+  .control-topbar .connection-label,.control-topbar .chrome-toggle-label{display:none}
+  .control-topbar .connection-chip{padding:7px}
+  .control-topbar .chrome-toggle{width:44px;padding:8px}
+  .app-shell[data-control-chrome="collapsed"] .control-topbar .chrome-toggle{width:auto}
+  .app-shell[data-control-chrome="collapsed"] .control-topbar .chrome-toggle-label{display:inline}
   .control-topbar>.btn{font-size:12px;padding:8px;margin-left:auto}
 }
