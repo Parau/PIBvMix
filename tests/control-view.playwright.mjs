@@ -55,6 +55,19 @@ test('preferences survive rerender and reload, without changing configuration', 
   }
   assert.equal(await columns(), 1)
 })
+test('phone layout accommodates wider system font metrics', async () => {
+  await viewport(390)
+  await page.evaluate(() => { document.documentElement.style.fontFamily = 'Verdana, sans-serif' })
+  try {
+    const overflow = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, elements: [...document.querySelectorAll('body *')].filter((node) => node.getBoundingClientRect().right > innerWidth).slice(0, 5).map((node) => node.className) }))
+    assert.ok(overflow.width <= 390, JSON.stringify(overflow))
+    const edit = await page.locator('[data-action="configure"]').boundingBox()
+    assert.ok(edit.x + edit.width <= 390)
+  } finally {
+    await page.evaluate(() => document.documentElement.style.removeProperty('font-family'))
+    await viewport(800)
+  }
+})
 test('Compacto, Normal and Grande change actual card dimensions', async () => {
   await choose('text', 'single')
   const dimensions = []

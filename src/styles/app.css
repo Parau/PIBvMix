@@ -32,3 +32,9 @@
   .control-main[data-columns="2"] .resource-copy,.control-main[data-columns="3"] .resource-copy{order:0;flex-basis:auto}
   .control-main[data-columns="2"] .state-badges,.control-main[data-columns="3"] .state-badges{align-items:stretch;flex-direction:column}
 }
+@media(max-width:480px){
+  .control-topbar{gap:8px}
+  .control-topbar .topbar-spacer{display:none}
+  .control-topbar .brand{gap:6px}
+  .control-topbar>.btn{font-size:12px;padding:8px;margin-left:auto}
+}
