@@ -1,0 +1,4 @@
+http://127.0.0.1:4173 {
+    root * ./www
+    file_server
+}
