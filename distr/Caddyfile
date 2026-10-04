@@ -1,4 +1,4 @@
 http://127.0.0.1:4173 {
-    root * ./www
+    root * ./vmix
     file_server
 }
