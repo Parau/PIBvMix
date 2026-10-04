@@ -2,6 +2,7 @@ import { isTitleCandidate } from '../vmix/safety.js'
 import { parseCsv, labelForRow, sha256 } from '../config/csv.js'
 import { extendVerificationFieldNames } from '../vmix/resolver.js?v=0.3.3'
 import { resourceIcon, icon } from './icons.js'
+import { canUseServerPalette, showServerPaletteDialog } from './server-palette.js'
 
 const e = (s) => String(s ?? '').replace(/[&<>'"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))
 const appVersion = document.querySelector('meta[name="pibvmix-version"]')?.content || ''
@@ -34,6 +35,7 @@ export function renderConfigure(root, ctx) {
     return true
   })
   const unavailable = resources.filter((r) => vmix && !vmix.inputByKey[r.inputKey])
+  const serverPaletteImport = canUseServerPalette()
 
   root.innerHTML = `
   <header class="topbar">
@@ -87,7 +89,7 @@ export function renderConfigure(root, ctx) {
             </article>`
           }).join('') : `<div class="empty"><strong>Your Control palette is empty</strong><span>Set a quantity for normal inputs or import Title Preset CSV files.</span></div>`}
         </div>
-        <div class="panel-footer"><div class="backup-actions"><button class="btn ghost" data-action="export">${icon('download')} Export</button><label class="btn ghost file-label">${icon('upload')} Import<input type="file" id="config-import" accept="application/json" hidden></label></div><button class="btn primary large" data-action="control" ${resources.length?'':'disabled'}>Go to Control →</button></div>
+        <div class="panel-footer"><div class="backup-actions"><button class="btn ghost" data-action="export">${icon('download')} Export</button><label class="btn ghost file-label">${icon('upload')} Import<input type="file" id="config-import" accept="application/json" hidden></label>${serverPaletteImport ? `<button class="btn ghost" data-action="import-server">${icon('upload')} Server palettes</button>` : ''}</div><button class="btn primary large" data-action="control" ${resources.length?'':'disabled'}>Go to Control →</button></div>
       </div>
     </section>
   </main><div id="modal-root"></div>`
@@ -103,6 +105,7 @@ function bindConfigure(root, ctx) {
   root.querySelectorAll('[data-action="control"]').forEach((x) => x.addEventListener('click', actions.toControl))
   root.querySelector('[data-action="export"]')?.addEventListener('click', actions.exportConfig)
   root.querySelector('#config-import')?.addEventListener('change', (ev) => ev.target.files[0] && actions.importConfig(ev.target.files[0]))
+  root.querySelector('[data-action="import-server"]')?.addEventListener('click', () => showServerPaletteDialog(root.querySelector('#modal-root'), actions))
   root.querySelector('#resource-search')?.addEventListener('input', (ev) => actions.setQuery(ev.target.value))
   root.querySelectorAll('[data-filter]').forEach((x) => x.addEventListener('click', () => actions.setFilter(x.dataset.filter)))
   root.querySelectorAll('[data-import-title]').forEach((x) => x.addEventListener('click', () => showCsvDialog(root.querySelector('#modal-root'), state.vmixState.inputByKey[x.dataset.importTitle], ctx)))

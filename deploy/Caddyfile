@@ -1,4 +1,11 @@
 http://127.0.0.1:4173 {
-    root * ./vmix
-    file_server
+    handle_path /control-palette/* {
+        root * ./control-palette
+        file_server browse
+    }
+
+    handle {
+        root * ./vmix
+        file_server
+    }
 }

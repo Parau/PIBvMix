@@ -19,6 +19,7 @@ O PIBvMix é uma aplicação estática em HTML/CSS/JavaScript. Não precisa de b
 - preferências locais da tela Control, incluindo colunas, tamanho, quantidade de texto e modo recolhido
 - persistência local em `localStorage`
 - importação e exportação da configuração em JSON
+- importação, no modo local, de paletas JSON salvas em `deploy/control-palette/`
 - transferência óptica da configuração por QR Code
 - modo Demo/Mock para testar a interface sem um vMix real
 - emulador local da API do vMix para desenvolvimento
@@ -128,6 +129,27 @@ Na configuração do PIBvMix, use o vMix em:
 127.0.0.1:8088
 ```
 
+#### Paletas prontas no servidor local
+
+No modo local, o Caddy também publica a pasta:
+
+```text
+deploy/control-palette/
+```
+
+O objetivo é permitir preparar uma Control Palette no navegador do próprio computador do vMix e reutilizá-la depois no tablet sem precisar localizar manualmente o arquivo no Android.
+
+Fluxo recomendado:
+
+1. configure a paleta no PIBvMix;
+2. use **Export** normalmente para baixar o arquivo JSON;
+3. copie ou mova esse JSON para `deploy/control-palette/` e dê a ele um nome descritivo, por exemplo `culto-domingo.json`;
+4. inicie o modo local com `deploy\iniciar-remote-vmix.bat`;
+5. no tablet, na tela Configure, use **Server palettes**;
+6. selecione o JSON desejado para importar a configuração.
+
+O botão **Server palettes** aparece apenas quando o PIBvMix está sendo executado pelo servidor local em `127.0.0.1`/`localhost`. O Caddy disponibiliza a listagem dos arquivos dessa pasta somente para leitura; o export continua sendo o download normal do navegador.
+
 ## Requisitos do vMix
 
 Para operação real:
@@ -165,4 +187,4 @@ O PIBvMix não exige etapa de build. O repositório usa caminhos relativos e con
 4. Confirmar que recursos ON AIR são bloqueados corretamente.
 5. Organizar a paleta de operação.
 6. Exportar a configuração JSON como backup ou transferi-la pelo recurso óptico/QR.
-7. Se estiver usando o modo local, validar previamente `ADB + Caddy + 127.0.0.1:8088` no tablet.
+7. Se estiver usando o modo local, validar previamente `ADB + Caddy + 127.0.0.1:8088` no tablet e, se necessário, a leitura de `deploy/control-palette/`.
