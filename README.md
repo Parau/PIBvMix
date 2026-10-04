@@ -1,81 +1,168 @@
 # PIBvMix
 
-Fast, browser-based vMix Preview resource picker.
+Interface web para operação rápida de recursos do vMix, com foco em encontrar o próximo conteúdo e enviá-lo ao **Preview** com poucos cliques e com proteções contra ações inseguras em itens que já estão no ar.
 
-**Event-ready audited build: v0.2.0 (2026-08-16)**  
-Published app: <https://criatividade.digital/PIBvMix/>
+**Versão atual do app: v0.3.7**  
+Aplicação hospedada: <https://criatividade.digital/PIBvMix/>
 
-PIBvMix is a static HTML/CSS/JavaScript application designed around one live-production task: **find the next resource fast and send it to vMix Preview with one click**.
+O PIBvMix é uma aplicação estática em HTML/CSS/JavaScript. Não precisa de backend próprio para funcionar e conversa diretamente com a HTTP Web API do vMix.
 
-## Current implementation
+## Principais funcionalidades
 
-- CONFIGURE and CONTROL modes
-- Direct vMix HTTP Web API client
-- Built-in Demo/Mock mode (`?demo=1` or button in CONFIGURE)
-- Program / Preview / ON AIR state shown directly on resource cards
-- Recursive ON AIR protection for Title/Lower inputs nested in live compositions
-- Correct distinction between active overlays and preview-only overlays
-- vMix Title Preset CSV import and one resource per preset
-- Post-preset field verification when mapping is available
-- Ambiguity-safe Title preset resolution (never guesses between identical presets)
-- Per-Title command locking
-- Search/filter and ordered resource palette
-- localStorage persistence
-- JSON configuration import/export
-- Standalone local vMix HTTP emulator
-- Automated core + emulator tests
-- Chromium/Playwright navigation and polling stress tests
-- Static GitHub Pages-ready deployment
+- modos **CONFIGURE** e **CONTROL**
+- conexão direta com a HTTP Web API do vMix
+- visualização de estados Program / Preview / ON AIR nos cards
+- proteção contra envio de recursos que já estão ON AIR, inclusive em composições aninhadas
+- suporte a Title Presets do vMix por CSV
+- verificação de campos de títulos quando o mapeamento está disponível
+- busca, filtros e ordenação da paleta de recursos
+- preferências locais da tela Control, incluindo colunas, tamanho, quantidade de texto e modo recolhido
+- persistência local em `localStorage`
+- importação e exportação da configuração em JSON
+- transferência óptica da configuração por QR Code
+- modo Demo/Mock para testar a interface sem um vMix real
+- emulador local da API do vMix para desenvolvimento
+- testes automatizados de núcleo, emulador, fluxo óptico e interface
 
-Read [`SPEC.md`](./SPEC.md) and [`DEVELOPMENT_PLAN.md`](./DEVELOPMENT_PLAN.md) for the complete design and validation plan.
+Consulte também [`SPEC.md`](./SPEC.md) e [`DEVELOPMENT_PLAN.md`](./DEVELOPMENT_PLAN.md).
 
-## Try without vMix
+## Formas de execução
 
-Open the deployed page and click **Use Demo mode**, or add `?demo=1` to the URL. Demo mode uses the exact same UI/state/safety pipeline as the real client.
+O PIBvMix pode ser usado de duas maneiras.
 
-For local development:
+### 1. Aplicação hospedada na Internet
+
+É o modo mais simples quando o tablet/computador que opera o PIBvMix consegue acessar simultaneamente:
+
+- a aplicação hospedada na Internet; e
+- o endereço local do computador onde o vMix está rodando.
+
+Exemplo:
+
+```text
+PIBvMix: https://criatividade.digital/PIBvMix/
+vMix:    http://192.168.1.50:8088
+```
+
+Nesse modo, **o vMix não precisa ser exposto à Internet**. A página é carregada do servidor web público, mas o navegador faz as chamadas da API diretamente para o endereço privado do vMix na rede local.
+
+Esse modo depende de o dispositivo que está executando o navegador conseguir acessar tanto a Internet quanto a rede onde está o vMix.
+
+### 2. Servidor local via USB
+
+Esse modo foi criado para ambientes de produção em que o computador do vMix está em uma rede isolada, restrita ou que não permite acesso externo adequado ao vMix.
+
+O pacote em [`deploy/`](./deploy/) usa:
+
+- **Caddy** para servir o PIBvMix localmente no computador Windows do vMix;
+- **ADB** para criar um túnel USB entre o tablet Android e o computador;
+- porta `4173` para a interface web;
+- porta `8088` para a HTTP Web API do vMix.
+
+O fluxo fica assim:
+
+```text
+Tablet Android
+    |
+    | USB / ADB reverse
+    |
+    +--> 127.0.0.1:4173 --> Caddy --> deploy/vmix
+    |
+    +--> 127.0.0.1:8088 --> vMix Web API
+```
+
+O tablet pode operar o sistema sem depender de acesso à Internet ou de acesso direto à LAN do vMix.
+
+#### Preparar os arquivos do modo local
+
+O código-fonte oficial continua na raiz do repositório (`index.html` e `src/`). Para atualizar a cópia usada pelo Caddy:
+
+```bat
+deploy\atualizar-vmix-local.bat
+```
+
+Esse script copia `index.html` e espelha `src/` para:
+
+```text
+deploy/vmix/
+```
+
+#### Driver USB/ADB
+
+No Windows, alguns dispositivos Android — especialmente Samsung — podem precisar de driver USB/ADB.
+
+Quando necessário, execute uma vez, com privilégio administrativo:
+
+```bat
+deploy\instalar-driver.bat
+```
+
+Depois da instalação do driver, o uso normal do Caddy e do ADB não deve precisar de elevação administrativa.
+
+No Android, habilite **Opções do desenvolvedor** e **Depuração USB** e autorize o computador quando solicitado.
+
+#### Iniciar o modo local
+
+Execute:
+
+```bat
+deploy\iniciar-remote-vmix.bat
+```
+
+O script:
+
+1. inicia o ADB;
+2. verifica o dispositivo Android;
+3. cria os túneis USB para as portas `4173` e `8088`;
+4. inicia o Caddy.
+
+No tablet, abra:
+
+```text
+http://127.0.0.1:4173
+```
+
+Na configuração do PIBvMix, use o vMix em:
+
+```text
+127.0.0.1:8088
+```
+
+## Requisitos do vMix
+
+Para operação real:
+
+- vMix Web Controller/API habilitado, normalmente na porta `8088`
+- `Restrict access to LAN only`: pode permanecer habilitado
+- `Enable enhanced security on Web and TCP API`: desabilitado para o acesso atual via navegador
+- senha do Web Controller em branco na implementação atual
+
+No modo hospedado na Internet, o navegador precisa de permissão para acessar a rede local. No modo local via USB, a comunicação é encaminhada pelo ADB para o próprio computador do vMix.
+
+## Testar sem vMix
+
+Abra a aplicação e escolha **Use Demo mode**, ou acrescente `?demo=1` à URL.
+
+Para desenvolvimento local:
 
 ```bash
 npm test
 npm run emulator
-```
-
-The emulator listens on `http://127.0.0.1:8088/api` and implements the v1 subset:
-
-- `GET /api`
-- `PreviewInput`
-- `SelectTitlePreset`
-
-Serve the page separately with:
-
-```bash
 npm run serve
 ```
 
-## GitHub Pages
+O emulador usa `http://127.0.0.1:8088/api`.
 
-Repository settings → **Pages** → deploy from branch → `main` / `/ (root)`.
+## GitHub Pages / hospedagem estática
 
-The project contains `.nojekyll` and uses relative URLs, so no build step is required.
+O PIBvMix não exige etapa de build. O repositório usa caminhos relativos e contém `.nojekyll`, portanto pode ser publicado diretamente em hospedagem estática, incluindo GitHub Pages.
 
-## Real vMix requirements for v1
+## Checklist básico antes de um evento
 
-- vMix Web Controller/API enabled (normally port 8088)
-- `Restrict access to LAN only`: keep enabled
-- `Enable enhanced security on Web and TCP API`: disabled for browser-script access
-- Web Controller password: blank for v1
-- current Chrome/Edge with Local Network Access permission granted
-
-Prefer a private IPv4 address such as `192.168.1.50:8088`.
-
-## Venue validation checklist
-
-1. Connect and verify production/input count.
-2. Send one harmless normal input to Preview.
-3. Export one real Title Preset CSV and import it into PIBvMix.
-4. Test one off-air Title preset and verify it reaches Preview correctly.
-5. Verify an ON AIR/nested Lower is blocked.
-6. Select/order final resources.
-7. Export PIBvMix configuration JSON as backup.
-
-The only unvalidated part before access to a real vMix is the exact browser/LAN/vMix integration behavior of the venue environment.
+1. Confirmar a conexão com o vMix e a quantidade de inputs.
+2. Enviar um input inofensivo para Preview.
+3. Importar e validar os Title Presets usados no evento.
+4. Confirmar que recursos ON AIR são bloqueados corretamente.
+5. Organizar a paleta de operação.
+6. Exportar a configuração JSON como backup ou transferi-la pelo recurso óptico/QR.
+7. Se estiver usando o modo local, validar previamente `ADB + Caddy + 127.0.0.1:8088` no tablet.

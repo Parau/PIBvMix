@@ -1,0 +1,289 @@
+import { isTitleCandidate } from '../vmix/safety.js'
+import { parseCsv, labelForRow, sha256 } from '../config/csv.js'
+import { extendVerificationFieldNames } from '../vmix/resolver.js?v=0.3.3'
+import { resourceIcon, icon } from './icons.js'
+
+const e = (s) => String(s ?? '').replace(/[&<>'"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))
+const appVersion = document.querySelector('meta[name="pibvmix-version"]')?.content || ''
+const id = () => crypto.randomUUID?.() || `r-${Date.now()}-${Math.random()}`
+const MAX_RESOURCE_OCCURRENCES = 10
+const clampQuantity = (value) => {
+  const n = Number.parseInt(value, 10)
+  return Number.isFinite(n) ? Math.max(0, Math.min(MAX_RESOURCE_OCCURRENCES, n)) : 0
+}
+
+function quantityStepper({ value, key, kind = 'input', label = 'resource' }) {
+  const attr = kind === 'preset' ? 'preset' : 'input'
+  return `<div class="quantity-stepper" aria-label="Occurrences for ${e(label)}"><button type="button" data-${attr}-quantity-dec="${e(key)}" aria-label="Decrease occurrences">−</button><input type="number" min="0" max="${MAX_RESOURCE_OCCURRENCES}" step="1" inputmode="numeric" value="${clampQuantity(value)}" data-${attr}-quantity="${e(key)}" aria-label="Number of occurrences for ${e(label)}"><button type="button" data-${attr}-quantity-inc="${e(key)}" aria-label="Increase occurrences">+</button></div>`
+}
+
+export function renderConfigure(root, ctx) {
+  const { state, actions } = ctx
+  const vmix = state.vmixState
+  const resources = state.config.resources
+  const query = state.ui.query.toLowerCase()
+  const filter = state.ui.filter
+  const inputs = (vmix?.inputs || []).filter((input) => {
+    const title = isTitleCandidate(input)
+    const match = !query || `${input.title} ${input.shortTitle} ${input.number}`.toLowerCase().includes(query)
+    if (!match) return false
+    if (filter === 'titles') return title
+    if (filter === 'other') return !title
+    if (filter === 'selected') return resources.some((r) => r.inputKey === input.key) || state.config.titleSources.some((s) => s.inputKey === input.key)
+    if (filter === 'unavailable') return false
+    return true
+  })
+  const unavailable = resources.filter((r) => vmix && !vmix.inputByKey[r.inputKey])
+
+  root.innerHTML = `
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">◆</span><strong>PIBvMix</strong>${appVersion ? `<small class="brand-version">v${e(appVersion)}</small>` : ''}</div>
+    <div class="connection-chip ${e(state.connection.status)}"><span class="dot"></span>${e(state.connection.status === 'connected' ? (state.ui.demo ? 'Demo connected' : 'Connected') : state.connection.status)}</div>
+    <div class="topbar-spacer"></div>
+    <button class="btn ghost" data-action="control">Control</button>
+  </header>
+  <main class="configure-layout">
+    <section class="hero-strip">
+      <div><p class="eyebrow">RESOURCE SETUP</p><h1>Build your live resource palette</h1><p>Choose how many times each resource should appear, then arrange the exact presentation order.</p></div>
+      <div class="connection-box">
+        <label>vMix address</label><div class="input-row"><input id="vmix-target" value="${e(state.config.vmix.target || '')}" placeholder="192.168.1.50:8088"><button class="btn primary" data-action="connect">${state.connection.status === 'connecting' ? 'Connecting…' : 'Connect'}</button></div>
+        <div class="connection-actions"><button class="link-btn" data-action="demo">${state.ui.demo ? 'Leave Demo mode' : 'Use Demo mode'}</button><button class="link-btn" data-action="refresh">Refresh inputs</button></div>
+        ${state.connection.message ? `<p class="inline-message">${e(state.connection.message)}</p>` : ''}
+        <details class="connection-help"><summary>Connection checklist</summary><div>vMix Web Controller enabled · LAN-only enabled · Enhanced Web/TCP API security disabled · blank Web Controller password for v1 · allow Local Network Access in Chrome/Edge.</div></details>
+      </div>
+    </section>
+
+    <section class="config-grid">
+      <div class="panel inputs-panel">
+        <div class="panel-head"><div><p class="eyebrow">AVAILABLE INPUTS</p><h2>${vmix ? e(vmix.presetName || 'Current production') : 'Connect to vMix'}</h2></div><span class="count">${vmix?.inputs.length || 0}</span></div>
+        <div class="search-row"><span>${icon('search')}</span><input id="resource-search" value="${e(state.ui.query)}" placeholder="Search inputs…"></div>
+        <div class="segmented">${['all','titles','other','selected','unavailable'].map((f) => `<button data-filter="${f}" class="${filter===f?'active':''}">${f === 'other' ? 'Other' : f[0].toUpperCase()+f.slice(1)}</button>`).join('')}</div>
+        <div class="input-list">
+          ${!vmix ? `<div class="empty"><strong>Connect or start Demo mode</strong><span>PIBvMix will read the resources from the production currently open in vMix.</span></div>` : inputs.map((input) => {
+            const title = isTitleCandidate(input)
+            const normalOccurrences = resources.filter((r) => r.type === 'input' && r.inputKey === input.key).length
+            const hasResources = resources.some((r) => r.inputKey === input.key)
+            const hasPresetCatalog = title && state.config.titleSources.some((s) => s.inputKey === input.key)
+            const configured = hasResources || hasPresetCatalog
+            const inputLabel = input.shortTitle || input.title || `Input ${input.number}`
+            return `<article class="input-item ${configured?'selected':''}">
+              <div class="type-icon">${resourceIcon(input.type)}</div><div class="input-copy"><strong>${e(inputLabel)}</strong><span>#${input.number} · ${e(input.type)}${title ? ' · Title/Lower' : ''}</span></div>
+              ${title ? `<button class="btn mini ${configured?'accent':''}" data-import-title="${e(input.key)}">${configured ? 'Presets' : 'Import CSV'}</button>` : quantityStepper({ value: normalOccurrences, key: input.key, label: inputLabel })}
+            </article>`
+          }).join('')}
+          ${filter === 'unavailable' && unavailable.length ? unavailable.map((r)=>`<article class="input-item unavailable"><div class="type-icon">!</div><div class="input-copy"><strong>${e(r.label)}</strong><span>Missing GUID ${e(r.inputKey)}</span></div></article>`).join('') : ''}
+        </div>
+      </div>
+
+      <div class="panel selected-panel">
+        <div class="panel-head"><div><p class="eyebrow">CONTROL PALETTE</p><h2>Selected resources</h2><p>Arrange the exact order you want during the broadcast.</p></div><span class="count">${resources.length}</span></div>
+        <div class="selected-list" id="selected-list">
+          ${resources.length ? resources.map((r) => {
+            const input = vmix?.inputByKey[r.inputKey]; const missing = vmix && !input
+            return `<article class="selected-item ${missing?'unavailable':''}" draggable="true" data-resource-id="${e(r.id)}">
+              <span class="drag">${icon('grip')}</span><div class="type-icon small">${resourceIcon(input?.type || (r.type==='titlePreset'?'title':''))}</div>
+              <div class="selected-copy"><input value="${e(r.label)}" data-rename="${e(r.id)}"><span>${r.type === 'titlePreset' ? `${e(input?.shortTitle || 'Title')} · Preset ${r.presetIndex}` : e(input?.shortTitle || input?.title || 'Unavailable input')}${missing?' · UNAVAILABLE':''}</span></div>
+              <div class="move-actions"><button title="Move up" data-move-up="${e(r.id)}">${icon('up')}</button><button title="Move down" data-move-down="${e(r.id)}">${icon('down')}</button><button title="Remove" data-remove="${e(r.id)}">${icon('close')}</button></div>
+            </article>`
+          }).join('') : `<div class="empty"><strong>Your Control palette is empty</strong><span>Set a quantity for normal inputs or import Title Preset CSV files.</span></div>`}
+        </div>
+        <div class="panel-footer"><div class="backup-actions"><button class="btn ghost" data-action="export">${icon('download')} Export</button><label class="btn ghost file-label">${icon('upload')} Import<input type="file" id="config-import" accept="application/json" hidden></label></div><button class="btn primary large" data-action="control" ${resources.length?'':'disabled'}>Go to Control →</button></div>
+      </div>
+    </section>
+  </main><div id="modal-root"></div>`
+
+  bindConfigure(root, ctx)
+}
+
+function bindConfigure(root, ctx) {
+  const { state, actions } = ctx
+  root.querySelector('[data-action="connect"]')?.addEventListener('click', () => actions.connect(root.querySelector('#vmix-target').value))
+  root.querySelector('[data-action="demo"]')?.addEventListener('click', actions.toggleDemo)
+  root.querySelector('[data-action="refresh"]')?.addEventListener('click', actions.refresh)
+  root.querySelectorAll('[data-action="control"]').forEach((x) => x.addEventListener('click', actions.toControl))
+  root.querySelector('[data-action="export"]')?.addEventListener('click', actions.exportConfig)
+  root.querySelector('#config-import')?.addEventListener('change', (ev) => ev.target.files[0] && actions.importConfig(ev.target.files[0]))
+  root.querySelector('#resource-search')?.addEventListener('input', (ev) => actions.setQuery(ev.target.value))
+  root.querySelectorAll('[data-filter]').forEach((x) => x.addEventListener('click', () => actions.setFilter(x.dataset.filter)))
+  root.querySelectorAll('[data-import-title]').forEach((x) => x.addEventListener('click', () => showCsvDialog(root.querySelector('#modal-root'), state.vmixState.inputByKey[x.dataset.importTitle], ctx)))
+
+  const inputQuantityField = (key) => root.querySelector(`[data-input-quantity="${CSS.escape(key)}"]`)
+  const applyInputQuantity = (key, value) => actions.setInputQuantity(key, clampQuantity(value))
+  root.querySelectorAll('[data-input-quantity-dec]').forEach((button) => button.addEventListener('click', () => {
+    const key = button.dataset.inputQuantityDec; const field = inputQuantityField(key)
+    applyInputQuantity(key, Number(field?.value || 0) - 1)
+  }))
+  root.querySelectorAll('[data-input-quantity-inc]').forEach((button) => button.addEventListener('click', () => {
+    const key = button.dataset.inputQuantityInc; const field = inputQuantityField(key)
+    applyInputQuantity(key, Number(field?.value || 0) + 1)
+  }))
+  root.querySelectorAll('[data-input-quantity]').forEach((field) => field.addEventListener('change', () => applyInputQuantity(field.dataset.inputQuantity, field.value)))
+
+  root.querySelectorAll('[data-remove]').forEach((x) => x.addEventListener('click', () => actions.removeResource(x.dataset.remove)))
+  root.querySelectorAll('[data-move-up]').forEach((x) => x.addEventListener('click', () => actions.moveResource(x.dataset.moveUp, -1)))
+  root.querySelectorAll('[data-move-down]').forEach((x) => x.addEventListener('click', () => actions.moveResource(x.dataset.moveDown, 1)))
+  root.querySelectorAll('[data-rename]').forEach((x) => x.addEventListener('change', () => actions.renameResource(x.dataset.rename, x.value)))
+  bindDrag(root.querySelector('#selected-list'), actions.reorderByIds)
+}
+
+function bindDrag(list, apply) {
+  if (!list) return
+  let dragged = null
+  list.querySelectorAll('[draggable="true"]').forEach((item) => {
+    item.addEventListener('dragstart', () => { dragged = item.dataset.resourceId; item.classList.add('dragging') })
+    item.addEventListener('dragend', () => { item.classList.remove('dragging'); dragged = null; apply([...list.querySelectorAll('[data-resource-id]')].map((x) => x.dataset.resourceId)) })
+    item.addEventListener('dragover', (ev) => { ev.preventDefault(); const target = ev.currentTarget; if (!dragged || target.dataset.resourceId === dragged) return; const source = list.querySelector(`[data-resource-id="${CSS.escape(dragged)}"]`); const box = target.getBoundingClientRect(); list.insertBefore(source, ev.clientY < box.top + box.height/2 ? target : target.nextSibling) })
+  })
+}
+
+function catalogFieldNames(catalog) {
+  return catalog.find((p) => p.verification?.fieldNames?.length)?.verification.fieldNames || []
+}
+
+function fieldNamesFor(input, catalog, maxColumns = Infinity) {
+  return extendVerificationFieldNames(input, catalogFieldNames(catalog), maxColumns)
+}
+
+function renderFieldMapping(fieldNames, maxColumns) {
+  if (!maxColumns) return ''
+  const labels = Array.from({ length: maxColumns }, (_, i) => fieldNames[i] || `CSV column ${i + 1}`)
+  return `<div class="csv-summary"><strong>Fields detected from vMix</strong><span>${labels.map((name, i) => `${i + 1}. ${e(name)} ← CSV ${i + 1}`).join(' · ')}</span></div>`
+}
+
+function groupResourcesByPreset(resources) {
+  const grouped = new Map()
+  for (const resource of resources) {
+    if (!grouped.has(resource.presetIndex)) grouped.set(resource.presetIndex, [])
+    grouped.get(resource.presetIndex).push(resource)
+  }
+  return grouped
+}
+
+async function showCsvDialog(host, input, ctx) {
+  const source = ctx.state.config.titleSources.find((x) => x.inputKey === input.key)
+  const existingResources = ctx.state.config.resources.filter((r) => r.type === 'titlePreset' && r.inputKey === input.key)
+  const existingByIndex = groupResourcesByPreset(existingResources)
+
+  let metadata = source?.csv || null
+  let catalog = source?.presets?.length
+    ? source.presets.map((p) => {
+        const occurrences = existingByIndex.get(p.presetIndex) || []
+        return {
+          ...p,
+          quantity: occurrences.length,
+          selected: occurrences.length > 0,
+          resourceIds: occurrences.map((r) => r.id),
+          resourceId: occurrences[0]?.id || p.resourceId || null,
+          label: occurrences[0]?.label || p.label,
+        }
+      })
+    : [...existingByIndex.entries()].map(([presetIndex, occurrences]) => {
+        const first = occurrences[0]
+        return {
+          presetIndex,
+          csvRow: first.csvRow || [],
+          label: first.label,
+          verification: first.verification || { mode: 'indexOnly', fieldNames: [] },
+          quantity: occurrences.length,
+          selected: true,
+          resourceIds: occurrences.map((r) => r.id),
+          resourceId: first.id,
+        }
+      })
+
+  host.innerHTML = `<div class="modal-backdrop"><div class="modal"><button class="modal-close">×</button><p class="eyebrow">TITLE PRESETS</p><h2>${e(input.shortTitle || input.title)}</h2><p>Choose how many times each preset should appear in the presentation list. Use 0 to hide it, or repeat it up to ${MAX_RESOURCE_OCCURRENCES} times.</p><div id="preset-manager"></div><details class="preset-import" ${catalog.length ? '' : 'open'}><summary>${catalog.length ? 'Import / re-sync CSV' : 'Import Title Preset CSV'}</summary><label class="drop-file"><span>${icon('upload')}</span><strong>Choose Title Preset CSV</strong><small>The file is read locally and never uploaded.</small><input type="file" accept=".csv,text/csv" hidden></label></details><div id="csv-error"></div></div></div>`
+
+  host.querySelector('.modal-close').onclick = () => host.innerHTML = ''
+  const dropFile = host.querySelector('.drop-file')
+  dropFile.onclick = (ev) => { if (ev.target.tagName !== 'INPUT') dropFile.querySelector('input').click() }
+
+  const renderCatalog = () => {
+    const manager = host.querySelector('#preset-manager')
+    if (!catalog.length) {
+      const detected = fieldNamesFor(input, [], Infinity)
+      manager.innerHTML = `${detected.length ? renderFieldMapping(detected, detected.length) : ''}<div class="empty"><strong>No presets imported yet</strong><span>Choose the CSV exported from this vMix Title to load the people/titles.</span></div>`
+      return
+    }
+
+    const maxColumns = Math.max(0, ...catalog.map((p) => (p.csvRow || []).length))
+    const fieldNames = fieldNamesFor(input, catalog, maxColumns)
+    manager.innerHTML = `${renderFieldMapping(fieldNames, maxColumns)}<div class="csv-summary"><strong>${catalog.length} presets available</strong><span>${e(metadata?.fileName || 'Current configuration')}</span></div><div class="csv-rows">${catalog.map((p, i) => `<div class="csv-row preset-edit-row"><div class="preset-edit-copy"><small>${(p.csvRow || []).map((value, col) => `${e(fieldNames[col] || `CSV column ${col + 1}`)}: ${e(value)}`).join(' · ')}</small><label><small>Control button name</small><input class="preset-name-input" data-preset-label="${i}" value="${e(p.label || labelForRow(p.csvRow || [], p.presetIndex))}" aria-label="Control button name for preset ${p.presetIndex}"></label></div><div class="preset-row-controls"><span class="preset-index">${p.presetIndex}</span>${quantityStepper({ value: p.quantity ?? (p.selected ? 1 : 0), key: i, kind: 'preset', label: `preset ${p.presetIndex}` })}</div></div>`).join('')}</div><div class="modal-actions"><button class="btn ghost" id="one-each">One each</button><button class="btn ghost" id="clear-all">Clear all</button><button class="btn primary" id="apply-presets">Save presets</button></div>`
+
+    const quantityInput = (index) => manager.querySelector(`[data-preset-quantity="${index}"]`)
+    const setQuantity = (index, value) => { const field = quantityInput(index); if (field) field.value = String(clampQuantity(value)) }
+    manager.querySelectorAll('[data-preset-quantity-dec]').forEach((button) => button.onclick = () => { const field = quantityInput(button.dataset.presetQuantityDec); setQuantity(button.dataset.presetQuantityDec, Number(field?.value || 0) - 1) })
+    manager.querySelectorAll('[data-preset-quantity-inc]').forEach((button) => button.onclick = () => { const field = quantityInput(button.dataset.presetQuantityInc); setQuantity(button.dataset.presetQuantityInc, Number(field?.value || 0) + 1) })
+    manager.querySelectorAll('[data-preset-quantity]').forEach((field) => field.addEventListener('change', () => { field.value = String(clampQuantity(field.value)) }))
+    manager.querySelector('#one-each').onclick = () => manager.querySelectorAll('[data-preset-quantity]').forEach((field) => { field.value = '1' })
+    manager.querySelector('#clear-all').onclick = () => manager.querySelectorAll('[data-preset-quantity]').forEach((field) => { field.value = '0' })
+    manager.querySelector('#apply-presets').onclick = () => {
+      const finalFieldNames = fieldNamesFor(input, catalog, maxColumns)
+      const updatedCatalog = catalog.map((p, i) => ({
+        ...p,
+        quantity: clampQuantity(quantityInput(i)?.value),
+        selected: clampQuantity(quantityInput(i)?.value) > 0,
+        label: manager.querySelector(`[data-preset-label="${i}"]`).value.trim() || labelForRow(p.csvRow || [], p.presetIndex),
+        verification: {
+          mode: finalFieldNames.length >= (p.csvRow || []).length && (p.csvRow || []).length ? 'verifiedFields' : 'indexOnly',
+          fieldNames: finalFieldNames.slice(0, (p.csvRow || []).length),
+        },
+      }))
+      const resources = []
+      for (const p of updatedCatalog) {
+        const previousIds = p.resourceIds || (p.resourceId ? [p.resourceId] : [])
+        const ids = Array.from({ length: p.quantity }, (_, occurrenceIndex) => previousIds[occurrenceIndex] || id())
+        p.resourceIds = ids
+        p.resourceId = ids[0] || null
+        for (const resourceId of ids) resources.push({
+          id: resourceId,
+          type: 'titlePreset',
+          label: p.label,
+          inputKey: input.key,
+          presetIndex: p.presetIndex,
+          csvRow: p.csvRow || [],
+          verification: p.verification || { mode: 'indexOnly', fieldNames: [] },
+        })
+      }
+      ctx.actions.replaceTitleResources(input.key, resources, metadata || { fileName: 'Current configuration', importedAt: new Date().toISOString(), rowCount: updatedCatalog.length, sha256: 'legacy' }, updatedCatalog)
+      host.innerHTML = ''
+    }
+  }
+
+  renderCatalog()
+
+  dropFile.querySelector('input').onchange = async (ev) => {
+    const file = ev.target.files[0]; if (!file) return
+    if (file.size > 1_000_000) {
+      host.querySelector('#csv-error').innerHTML = `<p class="error-box">CSV is larger than the v1 safety limit (1 MB).</p>`
+      return
+    }
+    try {
+      const raw = await file.text()
+      const rows = parseCsv(raw)
+      if (!rows.length) throw new Error('CSV contains no preset rows.')
+      const maxColumns = Math.max(...rows.map((r) => r.length))
+      const fieldNames = fieldNamesFor(input, catalog, maxColumns)
+      const previousByIndex = new Map(catalog.map((p) => [p.presetIndex, p]))
+      catalog = rows.map((row, presetIndex) => {
+        const previous = previousByIndex.get(presetIndex)
+        const sameRow = previous && JSON.stringify(previous.csvRow) === JSON.stringify(row)
+        return {
+          presetIndex,
+          csvRow: row,
+          label: sameRow ? previous.label : labelForRow(row, presetIndex),
+          verification: { mode: fieldNames.length >= row.length ? 'verifiedFields' : 'indexOnly', fieldNames: fieldNames.slice(0, row.length) },
+          quantity: previous ? clampQuantity(previous.quantity ?? (previous.selected ? 1 : 0)) : 1,
+          selected: previous ? clampQuantity(previous.quantity ?? (previous.selected ? 1 : 0)) > 0 : true,
+          resourceIds: sameRow ? (previous.resourceIds || (previous.resourceId ? [previous.resourceId] : [])) : [],
+          resourceId: sameRow ? previous.resourceId : null,
+        }
+      })
+      metadata = { fileName: file.name, importedAt: new Date().toISOString(), rowCount: rows.length, sha256: await sha256(raw) }
+      host.querySelector('#csv-error').innerHTML = ''
+      renderCatalog()
+      host.querySelector('.preset-import').open = false
+    } catch (err) {
+      host.querySelector('#csv-error').innerHTML = `<p class="error-box">${e(err.message)}</p>`
+    }
+  }
+}

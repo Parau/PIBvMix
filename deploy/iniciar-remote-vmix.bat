@@ -3,7 +3,7 @@ setlocal
 cd /d "%~dp0"
 
 echo.
-echo PIBvMix - teste do servidor local
+echo PIBvMix - servidor local via USB
 echo =================================
 echo.
 
@@ -15,17 +15,23 @@ echo Verificando dispositivos Android...
 adb\adb.exe devices
 
 echo.
-echo Configurando acesso USB ao servidor...
+echo Configurando acesso USB ao servidor web...
 adb\adb.exe reverse tcp:4173 tcp:4173
-
 if errorlevel 1 (
     echo.
-    echo ERRO: nao foi possivel configurar o acesso USB.
+    echo ERRO: nao foi possivel configurar a porta 4173.
+    echo Verifique se o tablet esta conectado, com Depuracao USB habilitada
+    echo e com este computador autorizado.
     echo.
-    echo Verifique:
-    echo - tablet conectado por USB
-    echo - Depuracao USB habilitada
-    echo - autorizacao deste computador aceita no tablet
+    pause
+    exit /b 1
+)
+
+echo Configurando acesso USB ao vMix...
+adb\adb.exe reverse tcp:8088 tcp:8088
+if errorlevel 1 (
+    echo.
+    echo ERRO: nao foi possivel configurar a porta 8088 do vMix.
     echo.
     pause
     exit /b 1
@@ -38,9 +44,12 @@ echo No computador:
 echo   http://127.0.0.1:4173
 echo.
 echo No tablet:
-echo   http://localhost:4173
+echo   http://127.0.0.1:4173
 echo.
-echo Pressione Ctrl+C para encerrar o servidor.
+echo Endereco do vMix no PIBvMix:
+echo   127.0.0.1:8088
+echo.
+echo Pressione Ctrl+C para encerrar o servidor Caddy.
 echo.
 
 start "" "http://127.0.0.1:4173"

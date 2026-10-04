@@ -1,0 +1,8 @@
+.brand-version {
+  align-self: flex-end;
+  margin: 0 0 3px -4px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: .02em;
+}

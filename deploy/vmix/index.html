@@ -1,36 +1,20 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PIBvMix - Teste do servidor local</title>
-  <style>
-    :root { color-scheme: dark; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
-    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #0b111b; color: #eef4ff; }
-    main { width: min(560px, calc(100% - 40px)); padding: 32px; border: 1px solid #26364d; border-radius: 16px; background: #111b29; box-shadow: 0 16px 50px #0006; }
-    h1 { margin-top: 0; font-size: 28px; }
-    .ok { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; background: #183c2a; color: #9ef0bd; font-weight: 700; }
-    .dot { width: 10px; height: 10px; border-radius: 50%; background: #55d887; }
-    dl { display: grid; grid-template-columns: auto 1fr; gap: 10px 16px; margin: 24px 0 0; }
-    dt { color: #98a9c2; }
-    dd { margin: 0; word-break: break-all; }
-  </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#0b111b" />
+  <meta name="pibvmix-version" content="0.3.7" />
+  <title>PIBvMix</title>
+  <link rel="stylesheet" href="./src/styles/app.css?v=0.3.7" />
+  <link rel="stylesheet" href="./src/styles/version.css?v=0.3.7" />
+  <link rel="stylesheet" href="./src/styles/swap.css?v=0.3.7" />
+  <link rel="stylesheet" href="./src/styles/optical.css?v=0.3.7" />
 </head>
 <body>
-  <main>
-    <div class="ok"><span class="dot"></span>Servidor local funcionando</div>
-    <h1>PIBvMix</h1>
-    <p>Esta página está sendo entregue pelo Caddy no computador local.</p>
-    <dl>
-      <dt>Endereço</dt><dd id="url"></dd>
-      <dt>Horário</dt><dd id="time"></dd>
-      <dt>Navegador</dt><dd id="browser"></dd>
-    </dl>
-  </main>
-  <script>
-    document.querySelector('#url').textContent = location.href;
-    document.querySelector('#time').textContent = new Date().toLocaleString('pt-BR');
-    document.querySelector('#browser').textContent = navigator.userAgent;
-  </script>
+  <div id="app" class="app-shell" aria-live="polite"></div>
+  <script type="module" src="./src/app.js?v=0.3.7"></script>
+  <script type="module" src="./src/optical/bootstrap.js?v=0.3.7"></script>
 </body>
 </html>
