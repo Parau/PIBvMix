@@ -44,6 +44,8 @@ try {
   const videoCards = page.locator('.resource-card').filter({ hasText: 'Opening Video' })
   assert.equal(await videoCards.count(), 2)
   await videoCards.first().click()
+  assert.equal(await videoCards.first().locator('[data-resource]').count(), 1)
+  await videoCards.first().locator('[data-resource]').click()
   await page.waitForFunction(() => {
     const cards = [...document.querySelectorAll('.resource-card')].filter((node) => node.textContent.includes('Opening Video'))
     return cards.length === 2 && cards.every((node) => node.textContent.includes('PREVIEW'))
