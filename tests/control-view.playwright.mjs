@@ -154,9 +154,74 @@ test('toolbar stays at 64px below the topbar during scroll', async () => {
 })
 test('grid uses row-major DOM order', async () => {
   await choose('text', 'single'); await choose('columns', '2')
-  const boxes = await page.locator('.resource-card').evaluateAll((nodes) => nodes.slice(0, 4).map((node) => ({ id: node.dataset.resource, x: node.offsetLeft, y: node.offsetTop })))
+  const boxes = await page.locator('.resource-card').evaluateAll((nodes) => nodes.slice(0, 4).map((node) => ({ id: node.dataset.resourceCard, x: node.offsetLeft, y: node.offsetTop })))
   assert.deepEqual(boxes.map((b) => b.id), ['long-0', 'long-1', 'long-2', 'long-3'])
   assert.equal(boxes[0].y, boxes[1].y); assert.ok(boxes[0].x < boxes[1].x); assert.ok(boxes[2].y > boxes[0].y)
+})
+test('card itself is inert; explicit Preview action sends and remains available in PREVIEW', async () => {
+  await page.goto(`${base}/tests/control-view.html`)
+  await page.locator('.resource-card').first().waitFor()
+  await page.evaluate(() => { window.calls.length = 0 })
+  const card = page.locator('[data-resource-card="long-0"]')
+  await card.click()
+  assert.deepEqual(await page.evaluate(() => window.calls), [])
+  const previewAction = card.locator('[data-resource="long-0"]')
+  assert.equal(await previewAction.count(), 1)
+  await previewAction.click()
+  assert.deepEqual(await page.evaluate(() => window.calls), [['send', 'long-0']])
+  const rerendered = page.locator('[data-resource-card="long-0"]')
+  assert.ok(await rerendered.evaluate((node) => node.classList.contains('preview')))
+  assert.equal(await rerendered.locator('[data-resource="long-0"]').count(), 1)
+})
+test('Title Preview action follows READY, PREVIEW and ON AIR transitions from live state', async () => {
+  await page.goto(`${base}/tests/control-swap.html`)
+  await page.locator('[data-blocked-resource="john"]').waitFor()
+  assert.equal(await page.locator('[data-blocked-resource="john"] [data-resource="john"]').count(), 0)
+  assert.equal(await page.locator('[data-blocked-resource="maria"] [data-resource="maria"]').count(), 0)
+
+  await page.evaluate(() => {
+    window.state.vmixState.overlays = window.state.vmixState.overlays.map((overlay) => overlay.number === 2 ? { ...overlay, inputKey: null } : overlay)
+    window.rerender()
+  })
+  await page.locator('[data-resource-card="john"]').waitFor()
+  assert.equal(await page.locator('[data-resource-card="john"] [data-resource="john"]').count(), 1)
+  assert.equal(await page.locator('[data-resource-card="maria"] [data-resource="maria"]').count(), 1)
+
+  await page.evaluate(() => {
+    window.state.vmixState.mainMix.previewKey = 'lower-people'
+    const fields = window.state.vmixState.inputByKey['lower-people'].text
+    fields[0].value = 'John Smith'; fields[1].value = '@johnsmith'
+    window.rerender()
+  })
+  assert.ok(await page.locator('[data-resource-card="john"]').evaluate((node) => node.classList.contains('preview')))
+  assert.ok(await page.locator('[data-resource-card="maria"]').evaluate((node) => node.classList.contains('ready')))
+  assert.equal(await page.locator('[data-resource-card="john"] [data-resource="john"]').count(), 1)
+  assert.equal(await page.locator('[data-resource-card="maria"] [data-resource="maria"]').count(), 1)
+
+  await page.evaluate(() => {
+    const fields = window.state.vmixState.inputByKey['lower-people'].text
+    fields[0].value = 'Maria Silva'; fields[1].value = '@mariasilva'
+    window.rerender()
+  })
+  assert.ok(await page.locator('[data-resource-card="john"]').evaluate((node) => node.classList.contains('ready')))
+  assert.ok(await page.locator('[data-resource-card="maria"]').evaluate((node) => node.classList.contains('preview')))
+  assert.equal(await page.locator('[data-resource-card="john"] [data-resource="john"]').count(), 1)
+  assert.equal(await page.locator('[data-resource-card="maria"] [data-resource="maria"]').count(), 1)
+
+  await page.evaluate(() => {
+    window.state.vmixState.mainMix.previewKey = null
+    window.state.vmixState.overlays = window.state.vmixState.overlays.map((overlay) => overlay.number === 2 ? { ...overlay, inputKey: 'lower-people' } : overlay)
+    window.rerender()
+  })
+  await page.locator('[data-blocked-resource="maria"]').waitFor()
+  assert.equal(await page.locator('[data-blocked-resource="maria"] [data-resource="maria"]').count(), 0)
+
+  await page.evaluate(() => {
+    window.state.vmixState.overlays = window.state.vmixState.overlays.map((overlay) => overlay.number === 2 ? { ...overlay, inputKey: null } : overlay)
+    window.rerender()
+  })
+  await page.locator('[data-resource-card="maria"]').waitFor()
+  assert.equal(await page.locator('[data-resource-card="maria"] [data-resource="maria"]').count(), 1)
 })
 test('production app sends resource and updates PREVIEW after changing view', async () => {
   await page.goto(`${base}/?demo=1`)
@@ -164,9 +229,11 @@ test('production app sends resource and updates PREVIEW after changing view', as
   assert.equal(await page.locator('.brand-version').textContent(), 'v0.3.7')
   await page.getByRole('button', { name: 'Go to Control →' }).click()
   await choose('columns', '1'); await choose('text', 'full')
-  await page.locator('.resource-card').filter({ hasText: 'Opening Video' }).click()
+  const opening = page.locator('.resource-card').filter({ hasText: 'Opening Video' })
+  await opening.locator('[data-resource]').click()
   await page.waitForFunction(() => [...document.querySelectorAll('.resource-card')].some((node) => node.textContent.includes('Opening Video') && node.classList.contains('preview')))
   assert.ok(await page.locator('.resource-card.program').count() > 0)
+  assert.equal(await opening.locator('[data-resource]').count(), 1)
 })
 for (const [fixture, current, target] of [['control-program-swap.html', 'person-1', 'person-2'], ['control-swap.html', 'john', 'maria'], ['control-effective.html', 'current', 'next']]) {
   test(`CURRENT, ON AIR and SWAP remain usable: ${fixture}`, async () => {
