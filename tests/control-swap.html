@@ -1,6 +1,6 @@
 <!doctype html><meta charset="utf-8"><title>PIBvMix SWAP UI smoke</title>
 <style>
-body{font-family:Arial;background:#070b12;color:#fff}.resource-grid{display:grid;gap:8px}.resource-card{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid #444;border-radius:8px}.resource-copy{flex:1}.state-badges{display:flex;gap:6px}.state-badge{padding:5px 7px;border-radius:5px}.onair{color:#ff737f}.current{color:#60e59a}.swap{color:#8fa2ba;background:#172232;border:0;cursor:pointer}
+body{font-family:Arial;background:#070b12;color:#fff}.resource-grid{display:grid;gap:8px}.resource-card{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid #444;border-radius:8px}.resource-copy{flex:1}.state-badges{display:flex;gap:6px}.state-badge{padding:5px 7px;border-radius:5px}.onair{color:#ff737f}.current{color:#60e59a}.swap,.preview-action{color:#8fa2ba;background:#172232;border:0;cursor:pointer}.preview-action{color:#68acff}
 </style><div id="app"></div>
 <script type="module">
 import { renderControl } from '../src/ui/control.js'
@@ -19,5 +19,8 @@ const inputs=[
 const inputByKey=Object.fromEntries(inputs.map(x=>[x.key,x]))
 const state={connection:{status:'connected'},ui:{demo:false,query:'',filter:'all',busyInputKeys:[],toast:null},config:{resources},vmixState:{inputs,inputByKey,inputKeyByNumber:{1:'cam',5:'lower-people',6:'lower-news',7:'mix'},mainMix:{programKey:'cam',previewKey:null},overlays:[{number:1,inputKey:'mix',preview:false},{number:2,inputKey:'lower-people',preview:false}],additionalMixes:[]}}
 const actions={toConfigure(){},setQuery(){},setFilter(){},sendResource(id){window.calls.push(['send',id])},swapResource(id){window.calls.push(['swap',id])}}
-renderControl(document.querySelector('#app'),{state,actions})
+const render=()=>renderControl(document.querySelector('#app'),{state,actions})
+window.state=state
+window.rerender=render
+render()
 </script>
