@@ -172,18 +172,18 @@ function card(r, vmix, onAir, state, titleResolution, titleSwapContext) {
   const previewDisabled = missing || offline || blocked || busy
   const previewAction = previewDisabled
     ? ''
-    : `<button class="state-badge preview-action" type="button" data-resource="${e(r.id)}" title="Send this resource to Preview">PREVIEW</button>`
+    : `<button class="state-badge preview-action" type="button" data-resource="${e(r.id)}" title="Send this resource to Preview" aria-label="Send ${e(r.label)} to Preview">PREVIEW</button>`
 
   if (blocked && !missing && !offline && !busy) {
     const swapTitle = swapContext?.reason === 'direct-program'
       ? 'Freeze the live Title render, load and verify this preset, then resume rendering.'
       : 'Transition the current Lower out, load this preset, verify it, then transition it back in.'
-    const actions = `${isCurrent ? '<span class="state-badge current">CURRENT</span>' : ''}${canSwap ? `<button class="state-badge swap" type="button" data-swap-resource="${e(r.id)}" title="${e(swapTitle)}">SWAP</button>` : ''}<span class="state-badge onair">ON AIR</span>`
-    return `<article class="resource-card ${cls} blocked-card" data-blocked-resource="${e(r.id)}">${content}<div class="resource-actions">${actions}</div></article>`
+    const badges = `<div class="state-badges">${isCurrent ? '<span class="state-badge current">CURRENT</span>' : ''}${canSwap ? `<button class="state-badge swap" type="button" data-swap-resource="${e(r.id)}" title="${e(swapTitle)}">SWAP</button>` : ''}<span class="state-badge onair">ON AIR</span></div>`
+    return `<article class="resource-card ${cls} blocked-card" data-blocked-resource="${e(r.id)}">${content}${badges}</article>`
   }
 
-  return `<article class="resource-card ${cls}${previewDisabled ? ' is-disabled' : ''}" data-resource-card="${e(r.id)}">
-    ${content}<div class="resource-actions">${previewAction}<span class="state-badge ${cls}">${status}</span></div>
+  return `<article class="resource-card ${cls}" data-resource-card="${e(r.id)}">
+    ${content}<div class="state-badges">${previewAction}<span class="state-badge ${cls}">${status}</span></div>
   </article>`
 }
 
