@@ -169,17 +169,22 @@ function card(r, vmix, onAir, state, titleResolution, titleSwapContext) {
   const content = `<div class="resource-symbol">${resourceIcon(input?.type || (r.type==='titlePreset'?'title':''))}</div>
     <div class="resource-copy"><strong>${e(r.label)}</strong><span>${e(typeName)}${r.type==='titlePreset'?` · Preset ${r.presetIndex}`:''}</span></div>`
 
+  const previewDisabled = missing || offline || blocked || busy
+  const previewAction = previewDisabled
+    ? ''
+    : `<button class="state-badge preview-action" type="button" data-resource="${e(r.id)}" title="Send this resource to Preview">PREVIEW</button>`
+
   if (blocked && !missing && !offline && !busy) {
     const swapTitle = swapContext?.reason === 'direct-program'
       ? 'Freeze the live Title render, load and verify this preset, then resume rendering.'
       : 'Transition the current Lower out, load this preset, verify it, then transition it back in.'
-    const badges = `<div class="state-badges">${isCurrent ? '<span class="state-badge current">CURRENT</span>' : ''}${canSwap ? `<button class="state-badge swap" type="button" data-swap-resource="${e(r.id)}" title="${e(swapTitle)}">SWAP</button>` : ''}<span class="state-badge onair">ON AIR</span></div>`
-    return `<article class="resource-card onair blocked-card" data-blocked-resource="${e(r.id)}">${content}${badges}</article>`
+    const actions = `${isCurrent ? '<span class="state-badge current">CURRENT</span>' : ''}${canSwap ? `<button class="state-badge swap" type="button" data-swap-resource="${e(r.id)}" title="${e(swapTitle)}">SWAP</button>` : ''}<span class="state-badge onair">ON AIR</span>`
+    return `<article class="resource-card ${cls} blocked-card" data-blocked-resource="${e(r.id)}">${content}<div class="resource-actions">${actions}</div></article>`
   }
 
-  return `<button class="resource-card ${cls}" data-resource="${e(r.id)}" ${missing || offline || blocked || busy ? 'disabled':''}>
-    ${content}<span class="state-badge ${cls}">${status}</span>
-  </button>`
+  return `<article class="resource-card ${cls}${previewDisabled ? ' is-disabled' : ''}" data-resource-card="${e(r.id)}">
+    ${content}<div class="resource-actions">${previewAction}<span class="state-badge ${cls}">${status}</span></div>
+  </article>`
 }
 
 function bind(root, ctx) {
@@ -197,5 +202,5 @@ function bind(root, ctx) {
   root.querySelector('#control-search')?.addEventListener('input', (ev) => ctx.actions.setQuery(ev.target.value))
   root.querySelectorAll('[data-filter]').forEach((x) => x.addEventListener('click', () => ctx.actions.setFilter(x.dataset.filter)))
   root.querySelectorAll('[data-resource]').forEach((x) => x.addEventListener('click', () => ctx.actions.sendResource(x.dataset.resource)))
-  root.querySelectorAll('[data-swap-resource]').forEach((x) => x.addEventListener('click', (ev) => { ev.stopPropagation(); ctx.actions.swapResource(x.dataset.swapResource) }))
+  root.querySelectorAll('[data-swap-resource]').forEach((x) => x.addEventListener('click', () => ctx.actions.swapResource(x.dataset.swapResource)))
 }
